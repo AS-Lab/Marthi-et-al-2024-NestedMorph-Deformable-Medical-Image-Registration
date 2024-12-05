@@ -2,6 +2,8 @@
 
 This repository implements the **NestedMorph** model, presented in the paper "[Kumar, Gurucharan Marthi Krishna, Mendola, Janine, Shmuel, Amir. "NestedMorph: Enhancing Deformable Medical Image Registration with Nested Attention Mechanisms." arXiv, 2024](https://arxiv.org/pdf/2410.02550)".
 
+**[28.10.2024]**: ⭐ This paper was accepted to the 2025 IEEE/CVF Winter Conference on Applications of Computer Vision (WACV 2025).
+
 [![arXiv](https://img.shields.io/badge/arXiv-2410.02550-b31b1b.svg)](https://arxiv.org/abs/2410.02550)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
