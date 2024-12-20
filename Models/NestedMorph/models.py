@@ -48,6 +48,48 @@ class DropPath(nn.Module):
     def extra_repr(self):
         return f'drop_prob={round(self.drop_prob,3):0.3f}'
 
+class DWConv(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dwconv = nn.Conv3d(dim, dim, 3, 1, 1, groups=dim)
+
+    def forward(self, x: torch.Tensor, D, H, W) -> torch.Tensor:
+        B, N, C = x.shape
+        tx = x.transpose(1, 2).view(B, C, D, H, W)
+        conv_x = self.dwconv(tx)
+        return conv_x.flatten(2).transpose(1, 2)
+
+class MixFFN(nn.Module):
+    def __init__(self, c1, c2):
+        super().__init__()
+        self.fc1 = nn.Linear(c1, c2)
+        self.dwconv = DWConv(c2)
+        self.act = nn.GELU()
+        self.fc2 = nn.Linear(c2, c1)
+
+    def forward(self, x: torch.Tensor, D, H, W) -> torch.Tensor:
+        ax = self.act(self.dwconv(self.fc1(x), D, H, W))
+        out = self.fc2(ax)
+        return out
+
+
+
+class MixFFN_skip(nn.Module):
+    def __init__(self, c1, c2):
+        super().__init__()
+        self.fc1 = nn.Linear(c1, c2)
+        self.dwconv = DWConv(c2)
+        self.act = nn.GELU()
+        self.fc2 = nn.Linear(c2, c1)
+        self.norm1 = nn.LayerNorm(c2)
+        self.norm2 = nn.LayerNorm(c2)
+        self.norm3 = nn.LayerNorm(c2)
+
+    def forward(self, x: torch.Tensor, D, H, W) -> torch.Tensor:
+        ax = self.act(self.norm1(self.dwconv(self.fc1(x), D, H, W) + self.fc1(x)))
+        out = self.fc2(ax)
+        return out
+
 class DWConvLKA(nn.Module):
     """
     Depthwise convolution with group-wise convolution applied to the input tensor.
@@ -60,6 +102,137 @@ class DWConvLKA(nn.Module):
         """Forward pass."""
         x = self.dwconv(x)
         return x
+
+class GlobalExtraction(nn.Module):
+    def __init__(self, dim=None):
+        super().__init__()
+        self.avgpool = self.globalavgchannelpool
+        self.maxpool = self.globalmaxchannelpool
+        self.proj = nn.Sequential(
+            nn.Conv3d(2, 1, 1, 1),
+            nn.BatchNorm3d(1)
+        )
+
+    def globalavgchannelpool(self, x):
+        x = x.mean(1, keepdim=True)
+        return x
+
+    def globalmaxchannelpool(self, x):
+        x = x.max(dim=1, keepdim=True)[0]
+        return x
+
+    def forward(self, x):
+        x_ = x.clone()
+        x = self.avgpool(x)
+        x2 = self.maxpool(x_)
+
+        cat = torch.cat((x, x2), dim=1)
+
+        proj = self.proj(cat)
+        return proj
+
+class ContextExtraction(nn.Module):
+    def __init__(self, dim, reduction=None):
+        super().__init__()
+        self.reduction = 1 if reduction is None else 2
+
+        self.dconv = self.DepthWiseConv3dx2(dim)
+        self.proj = self.Proj(dim)
+
+    def DepthWiseConv3dx2(self, dim):
+        dconv = nn.Sequential(
+            nn.Conv3d(in_channels=dim,
+                      out_channels=dim,
+                      kernel_size=3,
+                      padding=1,
+                      groups=dim),
+            nn.BatchNorm3d(num_features=dim),
+            nn.ReLU(inplace=True),
+            nn.Conv3d(in_channels=dim,
+                      out_channels=dim,
+                      kernel_size=3,
+                      padding=2,
+                      dilation=2),
+            nn.BatchNorm3d(num_features=dim),
+            nn.ReLU(inplace=True)
+        )
+        return dconv
+
+    def Proj(self, dim):
+        proj = nn.Sequential(
+            nn.Conv3d(in_channels=dim,
+                      out_channels=dim // self.reduction,
+                      kernel_size=1),
+            nn.BatchNorm3d(num_features=dim // self.reduction)
+        )
+        return proj
+
+    def forward(self, x):
+        x = self.dconv(x)
+        x = self.proj(x)
+        return x
+
+class MultiscaleFusion(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.local = ContextExtraction(dim)
+        self.global_ = GlobalExtraction()
+        self.bn = nn.BatchNorm3d(num_features=dim)
+
+    def forward(self, x, g):
+        x = self.local(x)
+        g = self.global_(g)
+
+        fuse = self.bn(x + g)
+        return fuse
+
+
+class MultiScaleGatedAttn(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.multi = MultiscaleFusion(dim)
+        self.selection = nn.Conv3d(dim, 2, 1)
+        self.proj = nn.Conv3d(dim, dim, 1)
+        self.bn = nn.BatchNorm3d(dim)
+        self.bn_2 = nn.BatchNorm3d(dim)
+        self.conv_block = nn.Sequential(
+            nn.Conv3d(in_channels=dim, out_channels=dim,
+                      kernel_size=1, stride=1))
+
+    def forward(self, x, g):
+        x_ = x.clone()
+        g_ = g.clone()
+
+        multi = self.multi(x, g)
+
+        multi = self.selection(multi)
+
+        attention_weights = F.softmax(multi, dim=1)
+        A, B = attention_weights.split(1, dim=1)
+
+        x_att = A.expand_as(x_) * x_
+        g_att = B.expand_as(g_) * g_
+
+        x_att = x_att + x_
+        g_att = g_att + g_
+
+        x_sig = torch.sigmoid(x_att)
+        g_att_2 = x_sig * g_att
+
+        g_sig = torch.sigmoid(g_att)
+        x_att_2 = g_sig * x_att
+
+        interaction = x_att_2 * g_att_2
+
+        projected = torch.sigmoid(self.bn(self.proj(interaction)))
+
+        weighted = projected * x_
+
+        y = self.conv_block(weighted)
+
+        y = self.bn_2(y)
+        return y
+
 
 class Mlp(nn.Module):
     """
@@ -329,6 +502,19 @@ class ChannelAttention(nn.Module):
 
         return x
 
+class OverlapPatchEmbeddings(nn.Module):
+    def __init__(self, img_size=64, patch_size=7, stride=4, padding=2, in_ch=2, dim=768):
+        super().__init__()
+        self.num_patches = (img_size // patch_size) ** 3
+        self.proj = nn.Conv3d(in_ch, dim, patch_size, stride, padding)
+        self.norm = nn.LayerNorm(dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        px = self.proj(x)
+        _, _, D, H, W = px.shape
+        fx = px.flatten(2).transpose(1, 2)
+        nfx = self.norm(fx)
+        return nfx, D, H, W
 
 class DualTransformerBlock(nn.Module):
     """
@@ -1081,7 +1267,7 @@ class SpatialTransformer(nn.Module):
 
         # Warp the source image `src` to the new locations using `grid_sample`
         return F.grid_sample(src, new_locs, align_corners=True, mode=self.mode)
-
+    
 
 class NestedMorph(nn.Module):
     """
