@@ -26,9 +26,11 @@ The **Overall Framework** for NestedMorph combines multiple modules that work in
 
 ## Model Architecture  
 NestedMorph comprises:  
-1. **Feature Extractor (Msa2Net):** Extracts multi-scale features from input image pairs.  
-2. **Flow Estimation (Conv3D):** Predicts the deformation field for aligning the images.  
-3. **Spatial Transformer:** Applies the deformation field to warp the source image.  
+1. **Feature Extractor (Multi-Scale Encoder):** Extracts multi-scale features from input image pairs.
+2. **Nested Attention Module:** Captures both local and global dependencies for enhanced feature aggregation.
+3. **Decoder:** Refines and reconstructs the deformation field for precise alignment.
+4. **Flow Estimation (Conv3D):** Predicts the deformation field for aligning the images.  
+5. **Spatial Transformer:** Applies the deformation field to warp the source image.  
 
 The model outputs:  
 - **Registered Image:** The warped version of the source image, aligned to the target.  
