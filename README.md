@@ -85,8 +85,8 @@ Each `subjectID_t1.pkl` file should match a corresponding `subjectID_dwi.pkl` fi
 ### Setup  
 1. Clone the repository:  
    ```bash  
-   git clone https://github.com/your-repo/NestedMorph.git  
-   cd NestedMorph  
+   git clone [https://github.com/your-repo/NestedMorph.git](https://github.com/AS-Lab/Marthi-et-al-2024-NestedMorph-Deformable-Medical-Image-Registration)  
+   cd Marthi-et-al-2024-NestedMorph-Deformable-Medical-Image-Registration  
    ```
 
 2. Install dependencies:  
