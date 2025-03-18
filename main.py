@@ -13,7 +13,7 @@ def parse_args():
     parser.add_argument('--t1_dir', type=str, required=True, help='Directory for T1 moving images')
     parser.add_argument('--dwi_dir', type=str, required=True, help='Directory for diffusion fixed images')
     parser.add_argument('--model_label', type=str, required=True, 
-                        help='Model label (MIDIR, NestedMorph, NestedMorph_Lite, TransMorph, ViTVNet, VoxelMorph, CycleMorph)')
+                        help='Model label (MIDIR, NestedMorph, TransMorph, ViTVNet, VoxelMorph, CycleMorph)')
     
     # Optional arguments with default values
     parser.add_argument('--epochs', type=int, default=500, help='Number of epochs')
