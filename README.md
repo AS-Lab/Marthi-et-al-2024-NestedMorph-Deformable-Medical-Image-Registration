@@ -89,9 +89,9 @@ Each subjectID_t1.pkl file should match a corresponding subjectID_dwi.pkl file f
    pip install -r requirements.txt
    
 3. Training
-To train the NestedMorph model, navigate to its directory under /Models/ and run:
+To train the model, run the following command with the appropriate parameters:
     ```bash
-    python train_nestedmorph.py --t1_dir ./Registration_Data/T1_Moving/ --dwi_dir ./Registration_Data/Diffusion_Fixed/ --epochs 100 --img_size 128,128,128 --lr 2e-4 --batch_size 2 --cont_training
+    python main.py --t1_dir ./Registration_Data/T1_Moving/ --dwi_dir ./Registration_Data/Diffusion_Fixed/ --epochs 100 --img_size 128,128,128 --lr 2e-4 --batch_size 2 --cont_training --model_label NestedMorph
 
 ## Registration Results
 
