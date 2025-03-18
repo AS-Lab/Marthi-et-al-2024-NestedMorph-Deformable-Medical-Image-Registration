@@ -109,9 +109,6 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
     elif model_label == "NestedMorph":
         from src.models.nestedmorph import NestedMorph
         model = NestedMorph(img_size)  # Initialize NestedMorph model
-    elif model_label == "NestedMorph_Lite":
-        from src.models.nestedmorph_lite import NestedMorph_Lite
-        model = NestedMorph_Lite(img_size)  # Initialize NestedMorph model
     elif model_label == "TransMorph":
         from src.models.transmorph.TransMorph import TransMorph
         from src.models.transmorph.TransMorph import CONFIGS as CONFIGS_TM
