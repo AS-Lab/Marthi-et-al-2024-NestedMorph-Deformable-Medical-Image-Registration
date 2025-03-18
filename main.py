@@ -62,4 +62,5 @@ if __name__ == '__main__':
         cont_training=args.cont_training
     )
 
-# python main.py --t1_dir '/home/gurumk/projects/def-amirs/gurumk/TRIAL_DATASET/T1/' --dwi_dir '/home/gurumk/projects/def-amirs/gurumk/TRIAL_DATASET/DWI/' --epochs 100 --img_size 64,64,64 --lr 2e-4 --batch_size 2 --cont_training --model_label MIDIR
+# python main.py --t1_dir /path/to/t1 --dwi_dir /path/to/dwi --epochs 100 --img_size 64,64,64 --lr 2e-4 --batch_size 2 --cont_training --model_label NestedMorph
+
