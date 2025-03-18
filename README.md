@@ -111,10 +111,10 @@ This section presents the **Registration Results** achieved by the NestedMorph m
 If you find this code useful in your research, please consider citing:
 
 ```
-@article{kumar2024nestedmorph,
+@inproceedings{kumar2025nestedmorph,
   title={NestedMorph: Enhancing Deformable Medical Image Registration with Nested Attention Mechanisms},
   author={Kumar, Gurucharan Marthi Krishna and Mendola, Janine and Shmuel, Amir},
-  journal={arXiv preprint arXiv:2410.02550},
-  year={2024}
+  booktitle={Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)},
+  year={2025}
 }
 ```
