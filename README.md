@@ -41,12 +41,12 @@ The model outputs:
 ## Models
 This repository contains several models under the Models/ directory. Each model can be used for deformable medical image registration. Below are the available models:
 
-- [CycleMorph](Models/CycleMorph) - A model for cycle-consistent registration.
-- [MIDIR](Models/MIDIR) - Multi-scale Image Deformable Registration.
-- [TransMorph](Models/TransMorph) - Transformer-based registration model.
-- [ViT-V-Net](Models/ViT-V-Net) - Vision Transformer-based network for medical image registration.
-- [VoxelMorph](Models/VoxelMorph) - A voxel-based deformable registration method.
-- [NestedMorph](Models/NestedMorph) - Proposed Nested multi-scale deformable model.
+- [CycleMorph](src/models/cyclemorph/cycleMorph_model) - A model for cycle-consistent registration.
+- [MIDIR](src/models/midir/midir) - Multi-scale Image Deformable Registration.
+- [TransMorph](src/models/transmorph/TransMorph) - Transformer-based registration model.
+- [ViT-V-Net](src/models/vitvnet/vitvnet) - Vision Transformer-based network for medical image registration.
+- [VoxelMorph](src/models/voxelmorph) - A voxel-based deformable registration method.
+- [NestedMorph](src/models/nestedmorph) - Proposed Nested multi-scale deformable model.
 
 ## Data Directory Structure
 
