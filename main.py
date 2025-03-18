@@ -13,7 +13,7 @@ def parse_args():
     parser.add_argument('--t1_dir', type=str, required=True, help='Directory for T1 moving images')
     parser.add_argument('--dwi_dir', type=str, required=True, help='Directory for diffusion fixed images')
     parser.add_argument('--model_label', type=str, required=True, 
-                        help='Model label (MIDIR, NestedMorph, TransMorph, ViTVNet, VoxelMorph, CycleMorph)')
+                        help='Model label (MIDIR, NestedMorph, NestedMorph_Lite, TransMorph, ViTVNet, VoxelMorph, CycleMorph)')
     
     # Optional arguments with default values
     parser.add_argument('--epochs', type=int, default=500, help='Number of epochs')
@@ -62,4 +62,4 @@ if __name__ == '__main__':
         cont_training=args.cont_training
     )
 
-# python main.py --t1_dir 'path/to/T1/' --dwi_dir 'path/to/DWI/' --epochs 100 --img_size 64,64,64 --lr 2e-4 --batch_size 2 --cont_training --model_label MODEL_NAME
+# python main.py --t1_dir '/home/gurumk/projects/def-amirs/gurumk/TRIAL_DATASET/T1/' --dwi_dir '/home/gurumk/projects/def-amirs/gurumk/TRIAL_DATASET/DWI/' --epochs 100 --img_size 64,64,64 --lr 2e-4 --batch_size 2 --cont_training --model_label MIDIR
