@@ -770,7 +770,6 @@ class MyDecoderLayerDAEFormer(nn.Module):
     Upscales input features and applies attention mechanisms, with an optional skip connection.
 
     Args:
-        input_size (tuple): Spatial dimensions of input (height, width).
         in_out_chan (list): [input_dim, output_dim, key_dim, value_dim, x1_dim].
         head_count (int): Number of attention heads.
         token_mlp_mode (str): Mode for token MLP.
@@ -780,7 +779,7 @@ class MyDecoderLayerDAEFormer(nn.Module):
         is_last (bool, optional): Flag for the last decoder layer (default: False).
     """
 
-    def __init__(self, input_size, in_out_chan, head_count, token_mlp_mode, reduction_ratio, n_class=3, norm_layer=nn.LayerNorm, is_last=False):
+    def __init__(self, in_out_chan, head_count, token_mlp_mode, reduction_ratio, n_class=3, norm_layer=nn.LayerNorm, is_last=False):
         super().__init__()
         
         dims, out_dim, key_dim, value_dim, x1_dim = in_out_chan
@@ -790,13 +789,13 @@ class MyDecoderLayerDAEFormer(nn.Module):
             self.x1_linear = nn.Linear(x1_dim, out_dim)
             self.ag_attn = MultiScaleGatedAttn(dim=out_dim)
             self.ag_attn_norm = nn.LayerNorm(out_dim)
-            self.layer_up = PatchExpand(input_resolution=input_size, dim=out_dim, dim_scale=2, norm_layer=norm_layer)
+            self.layer_up = PatchExpand(dim=out_dim, dim_scale=2, norm_layer=norm_layer)
             self.last_layer = None
         else:
             self.x1_linear = nn.Linear(x1_dim, out_dim)
             self.ag_attn = MultiScaleGatedAttn(dim=x1_dim)
             self.ag_attn_norm = nn.LayerNorm(out_dim)
-            self.layer_up = FinalPatchExpand_X4(input_resolution=input_size, dim=out_dim, dim_scale=4, norm_layer=norm_layer)
+            self.layer_up = FinalPatchExpand_X4(dim=out_dim, dim_scale=4, norm_layer=norm_layer)
             self.last_layer = nn.Conv3d(out_dim, n_class, 1)
 
         self.tran_layer1 = DualTransformerBlock(in_dim=dims, key_dim=key_dim, value_dim=value_dim, head_count=head_count)
@@ -819,13 +818,14 @@ class MyDecoderLayerDAEFormer(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-    def forward(self, x1, x2=None):
+    def forward(self, x1, x2=None, input_resolution=None):
         """
         Forward pass through the decoder layer.
         
         Args:
             x1 (tensor): First input tensor (e.g., feature maps).
             x2 (tensor, optional): Second input tensor for skip connection.
+            input_resolution (tuple, optional): Spatial dimensions of the input (D, H, W).
         
         Returns:
             tensor: Output tensor, either upscaled or transformed based on skip connection.
@@ -848,11 +848,14 @@ class MyDecoderLayerDAEFormer(nn.Module):
             tran_layer_2 = self.tran_layer2(tran_layer_1, d2, h2, w2)
 
             if self.last_layer:
-                out = self.last_layer(self.layer_up(tran_layer_2).view(b2, 4 * d2, 4 * h2, 4 * w2, -1).permute(0, 4, 1, 2, 3))
+                out = self.layer_up(tran_layer_2, (d2, h2, w2))
+                out = self.last_layer(out.view(b2, 4 * d2, 4 * h2, 4 * w2, -1).permute(0, 4, 1, 2, 3))
             else:
-                out = self.layer_up(tran_layer_2)
+                out = self.layer_up(tran_layer_2, (d2, h2, w2))
         else:
-            out = self.layer_up(x1)
+            if input_resolution is None:
+                raise ValueError("input_resolution must be provided when x2 is None")
+            out = self.layer_up(x1, input_resolution)
         return out
 
 
