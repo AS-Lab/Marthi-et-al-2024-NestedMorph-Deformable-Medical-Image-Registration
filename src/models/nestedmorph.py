@@ -503,18 +503,34 @@ class ChannelAttention(nn.Module):
         return x
 
 class OverlapPatchEmbeddings(nn.Module):
-    def __init__(self, img_size=64, patch_size=7, stride=4, padding=2, in_ch=2, dim=768):
+    """
+    A module that extracts overlapping patches from a 3D input tensor using a convolutional layer, followed by LayerNorm.
+    Args:
+        patch_size (int, optional): Size of the patches to extract. Default is 7.
+        stride (int, optional): Stride of the convolution. Default is 4.
+        padding (int, optional): Padding applied to the input tensor. Default is 2.
+        in_ch (int, optional): Number of input channels. Default is 2.
+        dim (int, optional): Output feature dimension. Default is 768.
+
+    Forward Pass:
+        The forward method applies the convolutional layer to the input tensor, flattens the spatial dimensions, 
+        and normalizes the resulting embeddings before returning them along with the output dimensions.
+    """
+
+    def __init__(self, patch_size=7, stride=4, padding=2, in_ch=2, dim=768):
         super().__init__()
-        self.num_patches = (img_size // patch_size) ** 3
+        self.patch_size = patch_size
+        self.stride = stride
+        self.padding = padding
         self.proj = nn.Conv3d(in_ch, dim, patch_size, stride, padding)
         self.norm = nn.LayerNorm(dim)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> tuple:
         px = self.proj(x)
-        _, _, D, H, W = px.shape
-        fx = px.flatten(2).transpose(1, 2)
+        _, _, D, H, W = px.shape  # Dynamically get output dimensions
+        fx = px.flatten(2).transpose(1, 2)  # Flatten spatial dimensions
         nfx = self.norm(fx)
-        return nfx, D, H, W
+        return nfx, D, H, W  # Return features and spatial dimensions
 
 class DualTransformerBlock(nn.Module):
     """
@@ -544,12 +560,9 @@ class DualTransformerBlock(nn.Module):
         if token_mlp == "mix":
             self.mlp1 = MixFFN(in_dim, int(in_dim * 4))
             self.mlp2 = MixFFN(in_dim, int(in_dim * 4))
-        elif token_mlp == "mix_skip":
+        else:
             self.mlp1 = MixFFN_skip(in_dim, int(in_dim * 4))
             self.mlp2 = MixFFN_skip(in_dim, int(in_dim * 4))
-        else:
-            self.mlp1 = MLP_FFN(in_dim, int(in_dim * 4))
-            self.mlp2 = MLP_FFN(in_dim, int(in_dim * 4))
 
     def forward(self, x: torch.Tensor, D: int, H: int, W: int) -> torch.Tensor:
         """
@@ -684,15 +697,13 @@ class PatchExpand(nn.Module):
         dim_scale (int, optional): The scaling factor for expansion (default is 2).
         norm_layer (nn.Module, optional): Normalization layer to apply (default is nn.LayerNorm).
     """
-
-    def __init__(self, input_resolution, dim, dim_scale=2, norm_layer=nn.LayerNorm):
+    def __init__(self, dim, dim_scale=2, norm_layer=nn.LayerNorm):
         super().__init__()
-        self.input_resolution = input_resolution
         self.dim = dim
         self.expand = nn.Linear(dim, 4 * dim, bias=False) if dim_scale == 2 else nn.Identity()
         self.norm = norm_layer(dim // dim_scale)
 
-    def forward(self, x):
+    def forward(self, x, input_resolution):
         """
         Forward pass to expand and normalize the input tensor.
 
@@ -703,19 +714,15 @@ class PatchExpand(nn.Module):
         Returns:
             tensor: The expanded and normalized tensor.
         """
-        D, H, W = self.input_resolution
-        x = self.expand(x)  # Expand the feature channels if dim_scale is 2
-
+        D, H, W = input_resolution
+        x = self.expand(x)
         B, L, C = x.shape
         assert L == D * H * W, "Input feature has wrong size"
-
-        x = x.view(B, D, H, W, C)  # Reshape to match spatial dimensions
+        x = x.view(B, D, H, W, C)
         x = rearrange(x, "b d h w (p1 p2 p3 c) -> b (d p1) (h p2) (w p3) c", p1=2, p2=2, p3=2, c=C // 8)
-        x = x.view(B, -1, C // 8)  # Flatten spatial dimensions
-        x = self.norm(x.clone())  # Apply normalization
-
+        x = x.view(B, -1, C // 8)
+        x = self.norm(x.clone())
         return x
-
 
 class FinalPatchExpand_X4(nn.Module):
     """
@@ -727,17 +734,15 @@ class FinalPatchExpand_X4(nn.Module):
         dim_scale (int, optional): The scaling factor for expansion (default is 4).
         norm_layer (nn.Module, optional): Normalization layer to apply (default is nn.LayerNorm).
     """
-
-    def __init__(self, input_resolution, dim, dim_scale=4, norm_layer=nn.LayerNorm):
+    def __init__(self, dim, dim_scale=4, norm_layer=nn.LayerNorm):
         super().__init__()
-        self.input_resolution = input_resolution
         self.dim = dim
         self.dim_scale = dim_scale
-        self.expand = nn.Linear(dim, 64 * dim, bias=False)
+        self.expand = nn.Linear(dim, dim * (dim_scale ** 3), bias=False)
         self.output_dim = dim
         self.norm = norm_layer(self.output_dim)
 
-    def forward(self, x):
+    def forward(self, x, input_resolution):
         """
         Forward pass to expand and normalize the input tensor by a factor of 4.
 
@@ -748,17 +753,14 @@ class FinalPatchExpand_X4(nn.Module):
         Returns:
             tensor: The expanded and normalized tensor.
         """
-        D, H, W = self.input_resolution
-        x = self.expand(x)  # Expand the feature channels
-
+        D, H, W = input_resolution
+        x = self.expand(x)
         B, L, C = x.shape
         assert L == D * H * W, "Input feature has wrong size"
-
-        x = x.view(B, D, H, W, C)  # Reshape to match spatial dimensions
-        x = rearrange(x, "b d h w (p1 p2 c) -> b (d p1) (h p2) (w c)", p1=self.dim_scale, p2=self.dim_scale, c=C // (self.dim_scale**2))
-        x = x.view(B, -1, self.output_dim)  # Flatten spatial dimensions
-        x = self.norm(x.clone())  # Apply normalization
-
+        x = x.view(B, D, H, W, C)
+        x = rearrange(x, "b d h w (p1 p2 p3 c) -> b (d p1) (h p2) (w p3) c", p1=self.dim_scale, p2=self.dim_scale, p3=self.dim_scale, c=C // (self.dim_scale ** 3))
+        x = x.view(B, -1, self.output_dim)
+        x = self.norm(x.clone())
         return x
         
 
@@ -869,45 +871,28 @@ class MyDecoderLayerLKA(nn.Module):
         norm_layer (nn.Module, optional): The normalization layer to use (default is `nn.LayerNorm`).
         is_last (bool, optional): Whether this is the last decoder layer (default is False).
     """
-
-    def __init__(
-            self, input_size, in_out_chan, head_count, token_mlp_mode, reduction_ratio, n_class=3,
-            norm_layer=nn.LayerNorm, is_last=False
-    ):
+    def __init__(self, in_out_chan, head_count, token_mlp_mode, reduction_ratio, n_class=3, norm_layer=nn.LayerNorm, is_last=False):
         super().__init__()
-        
-        # Extract input/output channel dimensions
-        dims = in_out_chan[0]
-        out_dim = in_out_chan[1]
-        key_dim = in_out_chan[2]
-        value_dim = in_out_chan[3]
-        x1_dim = in_out_chan[4]
+        dims, out_dim, key_dim, value_dim, x1_dim = in_out_chan
+        self.is_last = is_last
 
-        # Initialize layers and components for the decoder
         if not is_last:
-            self.x1_linear = nn.Linear(x1_dim, out_dim)  # Linear transformation for x1
-            self.ag_attn = MultiScaleGatedAttn(dim=x1_dim)  # Gated attention layer
-            self.ag_attn_norm = nn.LayerNorm(out_dim)  # Layer normalization
-
-            # Layer for expanding patches
-            self.layer_up = PatchExpand(input_resolution=input_size, dim=out_dim, dim_scale=2, norm_layer=norm_layer)
-            self.last_layer = None  # No last layer for intermediate decoder layers
+            self.x1_linear = nn.Linear(x1_dim, out_dim)
+            self.ag_attn = MultiScaleGatedAttn(dim=x1_dim)
+            self.ag_attn_norm = nn.LayerNorm(out_dim)
+            self.layer_up = PatchExpand(dim=out_dim, dim_scale=2, norm_layer=norm_layer)
+            self.last_layer = None
         else:
-            self.x1_linear = nn.Linear(x1_dim, out_dim)  # Linear transformation for x1
-            self.ag_attn = MultiScaleGatedAttn(dim=x1_dim)  # Gated attention layer
-            self.ag_attn_norm = nn.LayerNorm(out_dim)  # Layer normalization
+            self.x1_linear = nn.Linear(x1_dim, out_dim)
+            self.ag_attn = MultiScaleGatedAttn(dim=x1_dim)
+            self.ag_attn_norm = nn.LayerNorm(out_dim)
+            self.layer_up = FinalPatchExpand_X4(dim=out_dim, dim_scale=4, norm_layer=norm_layer)
+            self.last_layer = nn.Conv3d(out_dim, n_class, 1)
 
-            # Final patch expansion and output layer
-            self.layer_up = FinalPatchExpand_X4(
-                input_resolution=input_size, dim=out_dim, dim_scale=4, norm_layer=norm_layer
-            )
-            self.last_layer = nn.Conv3d(out_dim, n_class, 1)  # 3D convolution for final output class prediction
-
-        # LKA Blocks for attention-based transformations
         self.layer_lka_1 = LKABlock(dim=out_dim)
         self.layer_lka_2 = LKABlock(dim=out_dim)
-
-        # Initialize weights
+        
+        # Call the initialization method
         self.init_weights()
 
     def init_weights(self):
@@ -928,7 +913,7 @@ class MyDecoderLayerLKA(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)  # Zero initialization for biases
 
-    def forward(self, x1, x2=None):
+    def forward(self, x1, x2=None, input_resolution=None):
         """
         Forward pass through the decoder layer. If `x2` is provided, the skip connection
         mechanism is applied; otherwise, only `x1` is processed.
@@ -940,25 +925,25 @@ class MyDecoderLayerLKA(nn.Module):
         Returns:
             Tensor: The output tensor after passing through the decoder layer
         """
-        if x2 is not None:  # Skip connection exists
-            x2 = x2.contiguous()  # Ensure x2 is contiguous in memory
-            b2, d2, h2, w2, c2 = x2.shape  # Get the shape of x2
-            x2 = x2.view(b2, -1, c2)  # Reshape x2 for attention mechanism
+        if x2 is not None:
+            x2 = x2.contiguous()
+            b2, c2, d2, h2, w2 = x2.shape
+            x2 = x2.view(b2, -1, c2)
 
             # Apply linear transformation to x1
             x1_expand = self.x1_linear(x1)
 
             # Reshape x2 and x1 for attention calculation
-            x2_new = x2.view(x2.size(0), x2.size(2), x2.size(1) // (h2 * w2), x2.size(1) // (d2 * w2), x2.size(1) // (d2 * h2))  # B (DHW) C --> B C D H W
-            x1_expand = x1_expand.view(x2.size(0), x2.size(2), x2.size(1) // (h2 * w2), x2.size(1) // (d2 * w2), x2.size(1) // (d2 * h2))  # B N C --> B C D H W
+            x2_new = x2.view(b2, c2, d2, h2, w2)
+            x1_expand = x1_expand.view(b2, c2, d2, h2, w2)
 
             # Apply gated attention mechanism
             attn_gate = self.ag_attn(x=x2_new, g=x1_expand)
 
             # Combine attention output with x1
             cat_linear_x = x1_expand + attn_gate
-            cat_linear_x = cat_linear_x.permute(0, 2, 3, 4, 1)  # Rearrange dimensions for processing
-            cat_linear_x = self.ag_attn_norm(cat_linear_x)  # Normalize
+            cat_linear_x = cat_linear_x.permute(0, 2, 3, 4, 1)
+            cat_linear_x = self.ag_attn_norm(cat_linear_x)
 
             # Rearrange again for the LKA blocks
             cat_linear_x = cat_linear_x.permute(0, 4, 1, 2, 3).contiguous()
@@ -968,16 +953,15 @@ class MyDecoderLayerLKA(nn.Module):
             tran_layer_2 = self.layer_lka_2(tran_layer_1)
 
             # Flatten the output for the final processing layer
-            tran_layer_2 = tran_layer_2.view(tran_layer_2.size(0), tran_layer_2.size(4) * tran_layer_2.size(3) * tran_layer_2.size(2),
-                                             tran_layer_2.size(1))
-            if self.last_layer:  # If the last layer exists, apply it
-                out = self.last_layer(
-                    self.layer_up(tran_layer_2).view(b2, 4 * d2, 4 * h2, 4 * w2, -1).permute(0, 4, 1, 2, 3))  # Final expansion and convolution
+            tran_layer_2 = tran_layer_2.view(b2, -1, c2)
+            if self.last_layer: # If the last layer exists, apply it
+                out = self.layer_up(tran_layer_2, (d2, h2, w2))
+                out = self.last_layer(out.view(b2, 4 * d2, 4 * h2, 4 * w2, -1).permute(0, 4, 1, 2, 3)) # If no last layer, just return the expanded output
             else:
-                out = self.layer_up(tran_layer_2)  # If no last layer, just return the expanded output
+                out = self.layer_up(tran_layer_2, (d2, h2, w2)) # If no skip connection, just apply the expansion on x1
         else:
-            out = self.layer_up(x1)  # If no skip connection, just apply the expansion on x1
-        return out  # Return the processed output
+            out = self.layer_up(x1, input_resolution)
+        return out
 
 
 class MiT(nn.Module):
@@ -985,54 +969,33 @@ class MiT(nn.Module):
     MiT (Multi-scale Transformer) model with significantly reduced parameters while maintaining 4 stages
     """
 
-    def __init__(self, image_size, in_dim, key_dim, value_dim, layers, head_count=1, token_mlp="mix_skip"):
+    def __init__(self, in_dim, key_dim, value_dim, layers, head_count=1, token_mlp="mix_skip"):
         super().__init__()
-        
-        # Define patch embedding parameters for hierarchical feature extraction
-        patch_sizes = [7, 3, 3, 3]  # Maintain 4 stages
+        patch_sizes = [7, 3, 3, 3]
         strides = [4, 2, 2, 2]
         padding_sizes = [3, 1, 1, 1]
 
-        # Patch embeddings for each stage with reduced dimensions
-        self.patch_embed1 = OverlapPatchEmbeddings(
-            image_size, patch_sizes[0], strides[0], padding_sizes[0], 2, in_dim[0]
-        )
-        self.patch_embed2 = OverlapPatchEmbeddings(
-            image_size // 4, patch_sizes[1], strides[1], padding_sizes[1], in_dim[0], in_dim[1]
-        )
-        self.patch_embed3 = OverlapPatchEmbeddings(
-            image_size // 8, patch_sizes[2], strides[2], padding_sizes[2], in_dim[1], in_dim[2]
-        )
-        self.patch_embed4 = OverlapPatchEmbeddings(
-            image_size // 16, patch_sizes[3], strides[3], padding_sizes[3], in_dim[2], in_dim[3]
-        )
+        # Patch embeddings for each stage
+        self.patch_embed1 = OverlapPatchEmbeddings(patch_sizes[0], strides[0], padding_sizes[0], 2, in_dim[0])
+        self.patch_embed2 = OverlapPatchEmbeddings(patch_sizes[1], strides[1], padding_sizes[1], in_dim[0], in_dim[1])
+        self.patch_embed3 = OverlapPatchEmbeddings(patch_sizes[2], strides[2], padding_sizes[2], in_dim[1], in_dim[2])
+        self.patch_embed4 = OverlapPatchEmbeddings(patch_sizes[3], strides[3], padding_sizes[3], in_dim[2], in_dim[3])
 
-        # Transformer encoder blocks for each stage - drastically reduced
-        self.block1 = nn.ModuleList(
-            [DualTransformerBlock(in_dim[0], key_dim[0], value_dim[0], head_count, token_mlp) for _ in range(layers[0])]
-        )
+        # Transformer blocks
+        self.block1 = nn.ModuleList([DualTransformerBlock(in_dim[0], key_dim[0], value_dim[0], head_count, token_mlp) for _ in range(layers[0])])
         self.norm1 = nn.LayerNorm(in_dim[0])
-
-        self.block2 = nn.ModuleList(
-            [DualTransformerBlock(in_dim[1], key_dim[1], value_dim[1], head_count, token_mlp) for _ in range(layers[1])]
-        )
+        self.block2 = nn.ModuleList([DualTransformerBlock(in_dim[1], key_dim[1], value_dim[1], head_count, token_mlp) for _ in range(layers[1])])
         self.norm2 = nn.LayerNorm(in_dim[1])
-
-        self.block3 = nn.ModuleList(
-            [DualTransformerBlock(in_dim[2], key_dim[2], value_dim[2], head_count, token_mlp) for _ in range(layers[2])]
-        )
+        self.block3 = nn.ModuleList([DualTransformerBlock(in_dim[2], key_dim[2], value_dim[2], head_count, token_mlp) for _ in range(layers[2])])
         self.norm3 = nn.LayerNorm(in_dim[2])
-
-        self.block4 = nn.ModuleList(
-            [DualTransformerBlock(in_dim[3], key_dim[3], value_dim[3], head_count, token_mlp) for _ in range(layers[3])]
-        )
+        self.block4 = nn.ModuleList([DualTransformerBlock(in_dim[3], key_dim[3], value_dim[3], head_count, token_mlp) for _ in range(layers[3])])
         self.norm4 = nn.LayerNorm(in_dim[3])
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> list:
         """
         Forward pass for MiT with 4 stages
         """
-        B = x.shape[0]
+        B, C, D_in, H_in, W_in = x.shape
         outs = []
 
         # Stage 1
@@ -1074,75 +1037,27 @@ class MultiScaleLight(nn.Module):
     """
     Heavily reduced Msa2Net with much smaller dimensions while keeping 4 stages
     """
-
     def __init__(self, num_classes=3, head_count=1, reduction_ratio=2, token_mlp_mode="mix_skip"):
         super().__init__()
+        dims = [48, 96, 192, 384]
+        key_dim = [48, 96, 192, 384]
+        value_dim = [48, 96, 192, 384]
+        layers = [1, 1, 1, 1]
 
-        # Encoder - drastically reduced dimensions
-        dims, key_dim, value_dim, layers = [
-            [48, 96, 192, 384],  # Drastically reduced from [128, 256, 512, 1024]
-            [48, 96, 192, 384], 
-            [48, 96, 192, 384],
-            [1, 1, 1, 1]  # Minimal transformer blocks
-        ]
-        
         # Initialize MiT backbone with heavily reduced dimensions
-        self.backbone = MiT(
-            image_size=128,
-            in_dim=dims,
-            key_dim=key_dim,
-            value_dim=value_dim,
-            layers=layers,
-            token_mlp=token_mlp_mode,
-        )
+        self.backbone = MiT(in_dim=dims, key_dim=key_dim, value_dim=value_dim, layers=layers, head_count=head_count, token_mlp=token_mlp_mode)
 
-        # Decoder configuration - significantly smaller
-        d_base_feat_size = 1
         in_out_chan = [
-            [48, 48, 48, 48, 48],      # Reduced from [128, 128, 128, 128, 128]
-            [96, 96, 96, 96, 96],      # Reduced from [256, 256, 256, 256, 256]
-            [192, 192, 192, 192, 192], # Reduced from [512, 512, 512, 512, 512]
-            [384, 384, 384, 384, 384]  # Reduced from [1024, 1024, 1024, 1024, 1024]
+            [48, 48, 48, 48, 48],
+            [96, 96, 96, 96, 96],
+            [192, 192, 192, 192, 192],
+            [384, 384, 384, 384, 384]
         ]
 
-        # Replace expensive DAEFormer with lighter LKA for decoder_3
-        self.decoder_3 = MyDecoderLayerLKA(
-            (d_base_feat_size * 2, d_base_feat_size * 2, d_base_feat_size * 2),
-            in_out_chan[3],
-            head_count,
-            token_mlp_mode,
-            reduction_ratio,
-            n_class=num_classes)
-
-        # Simplify decoder_2 to use LKA as well
-        self.decoder_2 = MyDecoderLayerLKA(
-            (d_base_feat_size * 4, d_base_feat_size * 4, d_base_feat_size * 4),
-            in_out_chan[2],
-            head_count,
-            token_mlp_mode,
-            reduction_ratio,
-            n_class=num_classes)
-
-        self.decoder_1 = MyDecoderLayerLKA(
-            (d_base_feat_size * 8, d_base_feat_size * 8, d_base_feat_size * 8),
-            in_out_chan[1],
-            head_count,
-            token_mlp_mode,
-            reduction_ratio,
-            n_class=num_classes)
-
-        self.decoder_0 = MyDecoderLayerLKA(
-            (d_base_feat_size * 16, d_base_feat_size * 16, d_base_feat_size * 16),
-            in_out_chan[0],
-            head_count,
-            token_mlp_mode,
-            reduction_ratio,
-            n_class=num_classes,
-            is_last=True)
-        
-        # Optional: Apply weight sharing between similar layers to reduce parameters
-        # This requires modifying the decoder implementations and is commented out
-        # self.shared_layer = nn.Linear(384, 384)  # Example of a shared layer
+        self.decoder_3 = MyDecoderLayerLKA(in_out_chan[3], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
+        self.decoder_2 = MyDecoderLayerLKA(in_out_chan[2], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
+        self.decoder_1 = MyDecoderLayerLKA(in_out_chan[1], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
+        self.decoder_0 = MyDecoderLayerLKA(in_out_chan[0], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes, is_last=True)
 
     def forward(self, x):
         """
@@ -1152,15 +1067,31 @@ class MultiScaleLight(nn.Module):
         if x.size()[1] == 1:
             x = x.repeat(1, 3, 1, 1, 1)
 
-        # Get features from encoder
         output_enc = self.backbone(x)
         b, c, d, h, w = output_enc[3].shape
 
-        # Maintain original decoder chain with 4 stages
-        tmp_3 = self.decoder_3(output_enc[3].permute(0, 2, 3, 4, 1).view(b, -1, c))
-        tmp_2 = self.decoder_2(tmp_3, output_enc[2].permute(0, 2, 3, 4, 1))
-        tmp_1 = self.decoder_1(tmp_2, output_enc[1].permute(0, 2, 3, 4, 1))
-        tmp_0 = self.decoder_0(tmp_1, output_enc[0].permute(0, 2, 3, 4, 1))
+        # Pass the resolution of output_enc[3] to decoder_3
+        tmp_3 = self.decoder_3(
+            output_enc[3].permute(0, 2, 3, 4, 1).view(b, -1, c),
+            input_resolution=(output_enc[3].shape[2], output_enc[3].shape[3], output_enc[3].shape[4])
+        )
+        
+        # Subsequent decoders use the skip connection and resolution from the encoder outputs
+        tmp_2 = self.decoder_2(
+            tmp_3,
+            output_enc[2],
+            input_resolution=(output_enc[2].shape[2], output_enc[2].shape[3], output_enc[2].shape[4])
+        )
+        tmp_1 = self.decoder_1(
+            tmp_2,
+            output_enc[1],
+            input_resolution=(output_enc[1].shape[2], output_enc[1].shape[3], output_enc[1].shape[4])
+        )
+        tmp_0 = self.decoder_0(
+            tmp_1,
+            output_enc[0],
+            input_resolution=(output_enc[0].shape[2], output_enc[0].shape[3], output_enc[0].shape[4])
+        )
 
         return tmp_0
 
@@ -1249,60 +1180,27 @@ class NestedMorph(nn.Module):
         registered_image (tensor): The warped image after applying the flow field.
         flow_field (tensor): The generated flow field.
     """
-
     def __init__(self, inshape, use_gpu=False):
-        super(NestedMorph, self).__init__()
-        # Initialize a modified U-Net (Msa2Net) for feature extraction
-        self.unet = MultiScaleLight(num_classes=3)  # num_classes=3 to output a 3D flow field
-
-        # Determine the dimensionality of the input shape (1D, 2D, or 3D)
+        super().__init__()
+        self.unet = MultiScaleLight(num_classes=3)
         ndims = len(inshape)
-        assert ndims in [1, 2, 3], f'ndims should be one of 1, 2, or 3. found: {ndims}'
-
-        # Configure a convolutional layer to compute the flow field
-        self.flow = nn.Conv3d(3, ndims, kernel_size=3, padding=1)  # Converts unet output to ndims flow field
-
-        # Initialize the convolutional layer's weights with a small normal distribution and bias to zero
+        assert ndims in [1, 2, 3], f'ndims should be 1, 2, or 3. found: {ndims}'
+        self.flow = nn.Conv3d(3, ndims, kernel_size=3, padding=1)
         self.flow.weight = nn.Parameter(Normal(0, 1e-5).sample(self.flow.weight.shape))
         self.flow.bias = nn.Parameter(torch.zeros(self.flow.bias.shape))
-
-        # Initialize a spatial transformer to warp images based on the flow field
         self.spatial_transform = SpatialTransformer(inshape)
-        
-        if use_gpu:  # Move all layers to GPU if use_gpu is enabled
+        if use_gpu:
             self.unet = self.unet.cuda()
             self.flow = self.flow.cuda()
             self.spatial_transform = self.spatial_transform.cuda()
 
     def forward(self, inputs):
-        """
-        Forward pass: Extracts the source image, processes it through the U-Net, generates the flow field,
-        and applies the flow field to warp the image.
-
-        Args:
-            x (tensor): Input tensor of shape (batch_size, channels, depth, height, width).
-
-        Returns:
-            tuple: 
-                - registered_image (tensor): The warped image after applying the flow field.
-                - flow_field (tensor): The generated flow field.
-        """
-        # Extract the source image from the input tensor (first channel of the input batch)
         source, tar = inputs
         x = torch.cat((source, tar), dim=1)
-        
-        # Pass the input tensor through the U-Net model to generate feature maps
         unet_output = self.unet(x)
-
-        # Use the convolutional layer to convert feature maps into a dense flow field
         flow_field = self.flow(unet_output)
-
-        # Apply the flow field to warp the source image using the spatial transformer
         registered_image = self.spatial_transform(source, flow_field)
-        
-        # Return the registered (warped) image and the flow field as outputs
-        return registered_image, flow_field
-    
+        return registered_image, flow_field    
 '''
 MSA-2Net
 
