@@ -24,9 +24,9 @@ The NestedMorph framework combines advanced deep learning techniques for deforma
 ## Key Features  
 - **3D Deformable Image Registration:** Designed for volumetric medical images to capture complex anatomical variations.  
 - **Attention-Based Architecture:** Utilizes multi-scale attention mechanisms to enhance feature extraction and alignment.  
-- **Spatial Transformer Integration:** Efficient warping of source images based on predicted deformation fields.  
+- **Nested Attention Modules:** Employs nested attention modules that integrate attention weights from both encoder and decoder, reducing computational complexity while maintaining effective spatial transformations.  
 - **Flexible Training:** Supports various loss functions (similarity metrics, regularization losses) and datasets.  
-- **Optimized Input Size:** The study utilized images of size **64x64x64**, ensuring efficient training and inference.  
+- **Optimized Input Size:** The proposed model is optimized for any 3D input size, ensuring efficient training and inference.
 
 ## Overall Framework  
 
