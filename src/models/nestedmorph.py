@@ -1057,8 +1057,8 @@ class MultiScaleLight(nn.Module):
             [384, 384, 384, 384, 384]
         ]
 
-        self.decoder_3 = MyDecoderLayerLKA(in_out_chan[3], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
-        self.decoder_2 = MyDecoderLayerLKA(in_out_chan[2], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
+        self.decoder_3 = MyDecoderLayerDAEFormer(in_out_chan[3], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
+        self.decoder_2 = MyDecoderLayerDAEFormer(in_out_chan[2], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
         self.decoder_1 = MyDecoderLayerLKA(in_out_chan[1], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
         self.decoder_0 = MyDecoderLayerLKA(in_out_chan[0], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes, is_last=True)
 
