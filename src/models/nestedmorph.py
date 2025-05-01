@@ -781,30 +781,29 @@ class MyDecoderLayerDAEFormer(nn.Module):
 
     def __init__(self, in_out_chan, head_count, token_mlp_mode, reduction_ratio, n_class=3, norm_layer=nn.LayerNorm, is_last=False):
         super().__init__()
-        
+
         dims, out_dim, key_dim, value_dim, x1_dim = in_out_chan
         self.is_last = is_last
 
+        self.x1_linear = nn.Linear(x1_dim, out_dim)
+
         if not is_last:
-            self.x1_linear = nn.Linear(x1_dim, out_dim)
             self.ag_attn = MultiScaleGatedAttn(dim=out_dim)
-            self.ag_attn_norm = nn.LayerNorm(out_dim)
+            self.ag_attn_norm = norm_layer(out_dim)
             self.layer_up = PatchExpand(dim=out_dim, dim_scale=2, norm_layer=norm_layer)
             self.last_layer = None
         else:
-            self.x1_linear = nn.Linear(x1_dim, out_dim)
-            self.ag_attn = MultiScaleGatedAttn(dim=x1_dim)
-            self.ag_attn_norm = nn.LayerNorm(out_dim)
+            self.ag_attn = MultiScaleGatedAttn(dim=out_dim)
+            self.ag_attn_norm = norm_layer(out_dim)
             self.layer_up = FinalPatchExpand_X4(dim=out_dim, dim_scale=4, norm_layer=norm_layer)
-            self.last_layer = nn.Conv3d(out_dim, n_class, 1)
+            self.last_layer = nn.Conv3d(out_dim, n_class, kernel_size=1)
 
-        self.tran_layer1 = DualTransformerBlock(in_dim=dims, key_dim=key_dim, value_dim=value_dim, head_count=head_count)
-        self.tran_layer2 = DualTransformerBlock(in_dim=dims, key_dim=key_dim, value_dim=value_dim, head_count=head_count)
-        
+        self.tran_layer1 = DualTransformerBlock(in_dim=out_dim, key_dim=key_dim, value_dim=value_dim, head_count=head_count)
+        self.tran_layer2 = DualTransformerBlock(in_dim=out_dim, key_dim=key_dim, value_dim=value_dim, head_count=head_count)
+
         self.init_weights()
 
     def init_weights(self):
-        """Initialize weights using Xavier initialization."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
@@ -819,43 +818,39 @@ class MyDecoderLayerDAEFormer(nn.Module):
                     nn.init.zeros_(m.bias)
 
     def forward(self, x1, x2=None, input_resolution=None):
-        """
-        Forward pass through the decoder layer.
-        
-        Args:
-            x1 (tensor): First input tensor (e.g., feature maps).
-            x2 (tensor, optional): Second input tensor for skip connection.
-            input_resolution (tuple, optional): Spatial dimensions of the input (D, H, W).
-        
-        Returns:
-            tensor: Output tensor, either upscaled or transformed based on skip connection.
-        """
         if x2 is not None:
-            x2 = x2.contiguous()
-            b2, d2, h2, w2, c2 = x2.shape
-            x2 = x2.view(b2, -1, c2)
-            x1_expand = self.x1_linear(x1)
-            x2_new = x2.view(x2.size(0), x2.size(2), x2.size(1) // (h2 * w2), x2.size(1) // (d2 * w2), x2.size(1) // (d2 * h2))
-            x1_expand = x1_expand.view(x2.size(0), x2.size(2), x2.size(1) // (h2 * w2), x2.size(1) // (d2 * w2), x2.size(1) // (d2 * h2))
+            # x2 shape: (B, C, D, H, W)
+            b2, c2, d2, h2, w2 = x2.shape
+            x2_flat = x2.view(b2, c2, -1).transpose(1, 2)  # (B, N, C)
 
-            attn_gate = self.ag_attn(x=x2_new, g=x1_expand)
-            cat_linear_x = x1_expand + attn_gate
-            cat_linear_x = cat_linear_x.permute(0, 2, 3, 4, 1)
+            # Transform x1
+            x1_expand = self.x1_linear(x1)  # (B, N, out_dim)
+
+            # Reshape to 5D for attention
+            x2_5d = x2  # (B, C, D, H, W)
+            x1_5d = x1_expand.transpose(1, 2).view(b2, -1, d2, h2, w2)  # (B, out_dim, D, H, W)
+
+            attn_gate = self.ag_attn(x=x2_5d, g=x1_5d)  # (B, out_dim, D, H, W)
+            cat_linear_x = x1_5d + attn_gate  # (B, out_dim, D, H, W)
+            cat_linear_x = cat_linear_x.permute(0, 2, 3, 4, 1)  # (B, D, H, W, C)
             cat_linear_x = self.ag_attn_norm(cat_linear_x)
-            cat_linear_x = cat_linear_x.view(b2, -1, c2)
+            cat_linear_x = cat_linear_x.view(b2, -1, cat_linear_x.shape[-1])  # (B, N, C)
 
             tran_layer_1 = self.tran_layer1(cat_linear_x, d2, h2, w2)
             tran_layer_2 = self.tran_layer2(tran_layer_1, d2, h2, w2)
 
+            out = self.layer_up(tran_layer_2, (d2, h2, w2))  # (B, N_up, C)
+
             if self.last_layer:
-                out = self.layer_up(tran_layer_2, (d2, h2, w2))
-                out = self.last_layer(out.view(b2, 4 * d2, 4 * h2, 4 * w2, -1).permute(0, 4, 1, 2, 3))
-            else:
-                out = self.layer_up(tran_layer_2, (d2, h2, w2))
+                # Convert to 5D for Conv3d
+                d_up, h_up, w_up = 4 * d2, 4 * h2, 4 * w2
+                out = out.view(b2, d_up, h_up, w_up, -1).permute(0, 4, 1, 2, 3)  # (B, C, D, H, W)
+                out = self.last_layer(out)  # (B, n_class, D, H, W)
         else:
             if input_resolution is None:
                 raise ValueError("input_resolution must be provided when x2 is None")
             out = self.layer_up(x1, input_resolution)
+
         return out
 
 
