@@ -254,7 +254,7 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
                 
         # Log validation results
         best_dsc = max(eval_dsc_new_y.avg, best_dsc)  # Update the best validation Dice score
-        logger.info('Epoch {} loss {:.4f} dice_new_y {:.4f} dice_new_x {:.4f}'.format(
+        logger.info('Epoch {} loss {:.4f} DSC Deformed vs Fixed {:.4f} DSC Deformed vs Moving {:.4f}'.format(
             epoch, loss_all.avg, eval_dsc_new_y.avg, eval_dsc_new_x.avg
         ))
 
