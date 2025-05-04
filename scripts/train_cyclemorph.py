@@ -261,47 +261,46 @@ def save_to_csv(epoch, loss, dice_score_y, dice_score_x, csv_file):
         writer = csv.writer(file)
         writer.writerow([epoch, loss, dice_score_y, dice_score_x])
 
-def save_images(def_out, y, x, epoch):
+def save_images(def_out, y, x, epoch, save_dir):
     """
-    Save the last def_out, y, and x images from the 32nd slice.
+    Save all slices from def_out, y, and x images.
     
     Args:
         def_out (torch.Tensor): Deformed output image.
         y (torch.Tensor): Fixed image.
         x (torch.Tensor): Moving image.
         epoch (int): Current epoch.
+        save_dir (str): Directory to save images.
     """
-    # Convert tensors to numpy arrays
     def_out_np = def_out.cpu().detach().numpy()
     y_np = y.cpu().detach().numpy()
     x_np = x.cpu().detach().numpy()
-    
-    # Select the 32nd slice
-    def_out_slice = def_out_np[0, 0, :, :, 31]
-    y_slice = y_np[0, 0, :, :, 31]
-    x_slice = x_np[0, 0, :, :, 31]
-    
-    # Create a figure with 1 row and 3 columns
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    
-    # Plot def_out image
-    axes[0].imshow(def_out_slice, cmap='gray')
-    axes[0].set_title('def_out (Epoch {})'.format(epoch))
-    axes[0].axis('off')
-    
-    # Plot y image
-    axes[1].imshow(y_slice, cmap='gray')
-    axes[1].set_title('y (Epoch {})'.format(epoch))
-    axes[1].axis('off')
 
-    # Plot x image
-    axes[2].imshow(x_slice, cmap='gray')
-    axes[2].set_title('x (Epoch {})'.format(epoch))
-    axes[2].axis('off')
-    
-    # Save the combined image
-    plt.savefig('combined_epoch_{}.png'.format(epoch))
-    plt.close()
+    depth = def_out_np.shape[4]  # Assuming shape is [B, C, D, H, W]
+
+    # Create output directory for this epoch
+    epoch_dir = os.path.join(save_dir, f'epoch_{epoch}')
+    os.makedirs(epoch_dir, exist_ok=True)
+
+    for i in range(depth):
+        def_out_slice = def_out_np[0, 0, :, :, i]
+        y_slice = y_np[0, 0, :, :, i]
+        x_slice = x_np[0, 0, :, :, i]
+
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        axes[0].imshow(def_out_slice, cmap='gray')
+        axes[0].set_title('def_out')
+        axes[0].axis('off')
+        axes[1].imshow(y_slice, cmap='gray')
+        axes[1].set_title('y')
+        axes[1].axis('off')
+        axes[2].imshow(x_slice, cmap='gray')
+        axes[2].set_title('x')
+        axes[2].axis('off')
+
+        plt.savefig(os.path.join(epoch_dir, f'slice_{i:03d}.png'))
+        plt.close()
+
 
 def comput_fig(img):
     """
