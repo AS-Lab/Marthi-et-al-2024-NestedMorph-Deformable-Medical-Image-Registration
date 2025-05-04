@@ -1114,8 +1114,7 @@ class SpatialTransformer(nn.Module):
 
     def __init__(self, size, mode='bilinear'):
         super().__init__()
-
-        self.mode = mode  # Interpolation mode, e.g., 'bilinear' or 'nearest'
+        self.mode = mode
 
         # Create a fixed sampling grid based on the input size
         vectors = [torch.arange(0, s) for s in size]  # Generate 1D grid vectors for each dimension
@@ -1141,24 +1140,32 @@ class SpatialTransformer(nn.Module):
                           with the same shape as the input image (B, C, D, H, W).
         """
         # Compute new voxel locations by adding the flow field to the grid
-        new_locs = self.grid + flow
-        shape = flow.shape[2:]  # Spatial dimensions of the flow field
+        shape = flow.shape[2:]  # Spatial dimensions
+        dim = len(shape)
+        device = flow.device
+        dtype = flow.dtype
 
-        # Normalize the grid values to the range [-1, 1] as required by `grid_sample`
-        for i in range(len(shape)):
-            new_locs[:, i, ...] = 2 * (new_locs[:, i, ...] / (shape[i] - 1) - 0.5)
+        # Create sampling grid dynamically
+        coords = torch.meshgrid([torch.arange(0, s, device=device, dtype=dtype) for s in shape], indexing='ij')
+        grid = torch.stack(coords)  # (N, D, H, W)
+        grid = grid.unsqueeze(0)  # (1, N, D, H, W) or (1, N, H, W)
+        grid = grid.expand(flow.shape[0], -1, *shape)  # (B, N, D, H, W)
 
-        # Rearrange dimensions: move channel dimension to the last position
-        # Reverse the order of the spatial dimensions (required by PyTorch's `grid_sample`)
-        if len(shape) == 2:  # For 2D inputs
-            new_locs = new_locs.permute(0, 2, 3, 1)
-            new_locs = new_locs[..., [1, 0]]
-        elif len(shape) == 3:  # For 3D inputs
-            new_locs = new_locs.permute(0, 2, 3, 4, 1)
-            new_locs = new_locs[..., [2, 1, 0]]
+        # Add flow to sampling grid
+        new_locs = grid + flow
 
-        # Warp the source image `src` to the new locations using `grid_sample`
-        return F.grid_sample(src, new_locs, align_corners=True, mode=self.mode)
+        # Normalize to [-1, 1] for grid_sample
+        for i in range(dim):
+            new_locs[:, i, ...] = 2.0 * (new_locs[:, i] / (shape[i] - 1)) - 1.0
+
+        if dim == 2:
+            new_locs = new_locs.permute(0, 2, 3, 1)  # (B, H, W, 2)
+            new_locs = new_locs[..., [1, 0]]         # swap to (x, y)
+        elif dim == 3:
+            new_locs = new_locs.permute(0, 2, 3, 4, 1)  # (B, D, H, W, 3)
+            new_locs = new_locs[..., [2, 1, 0]]         # swap to (x, y, z)
+
+        return F.grid_sample(src, new_locs, mode=self.mode, align_corners=True)
     
 
 class NestedMorph(nn.Module):
