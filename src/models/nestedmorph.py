@@ -1179,7 +1179,7 @@ class NestedMorph(nn.Module):
         self.flow = nn.Conv3d(3, ndims, kernel_size=3, padding=1)
         self.flow.weight = nn.Parameter(Normal(0, 1e-5).sample(self.flow.weight.shape))
         self.flow.bias = nn.Parameter(torch.zeros(self.flow.bias.shape))
-        self.spatial_transform = SpatialTransformer(inshape)
+        self.spatial_transform = SpatialTransformer()
         if use_gpu:
             self.unet = self.unet.cuda()
             self.flow = self.flow.cuda()
