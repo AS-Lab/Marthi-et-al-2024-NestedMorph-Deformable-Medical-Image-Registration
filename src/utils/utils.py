@@ -141,7 +141,7 @@ class register_model(nn.Module):
     """
     def __init__(self, img_size=(64, 256, 256), mode='bilinear'):
         super(register_model, self).__init__()
-        self.spatial_trans = SpatialTransformer(img_size, mode)  # Initialize the spatial transformer module
+        self.spatial_trans = SpatialTransformer()  # Initialize the spatial transformer module
 
     def forward(self, x, y):
         """
