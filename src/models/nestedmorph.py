@@ -1096,75 +1096,61 @@ class MultiScaleLight(nn.Module):
     
 class SpatialTransformer(nn.Module):
     """
-    N-Dimensional Spatial Transformer for warping an image using a displacement field (flow).
+    N-Dimensional Spatial Transformer for warping images or volumes using a displacement field.
 
-    This module applies a spatial transformation to an input image (or volume) based on a displacement field 
-    (flow). It generates a grid of new voxel locations and uses these locations to sample the source image 
-    via interpolation, producing the transformed output.
+    This module performs spatial transformation by applying a flow (displacement field) to an input
+    image or volume. It dynamically constructs a sampling grid, adds the flow to compute new coordinates,
+    normalizes them, and uses `grid_sample` for interpolation.
 
     Args:
-        size (tuple): The shape of the input image (or volume) to be transformed.
-        mode (str, optional): The interpolation mode to use. Options are 'bilinear' and 'nearest'. 
-                               Default is 'bilinear'.
+        mode (str): Interpolation mode to be used in grid sampling.
+                    Options: 'bilinear', 'nearest', or 'bicubic' (for 4D inputs only).
+                    Default is 'bilinear'.
 
-    Forward pass:
-        The input image (src) is warped according to the flow (displacement field) by computing new voxel 
-        locations and using these locations to perform interpolation (sampling) from the source image.
+    Forward Args:
+        src (torch.Tensor): The input tensor to be warped.
+                            Shape must be (B, C, H, W) for 2D or (B, C, D, H, W) for 3D.
+
+        flow (torch.Tensor): The displacement field indicating where to sample from `src`.
+                             Shape must be (B, 2, H, W) for 2D or (B, 3, D, H, W) for 3D.
+                             The last dimension size must match the spatial dimensions of `src`.
+
+    Returns:
+        torch.Tensor: The warped image or volume, same shape as `src`.
     """
 
-    def __init__(self, size, mode='bilinear'):
+    def __init__(self, mode='bilinear'):
         super().__init__()
         self.mode = mode
 
-        # Create a fixed sampling grid based on the input size
-        vectors = [torch.arange(0, s) for s in size]  # Generate 1D grid vectors for each dimension
-        grids = torch.meshgrid(vectors)  # Create an N-D grid
-        grid = torch.stack(grids)  # Combine grids into a tensor of shape (N, size1, size2, ...)
-        grid = torch.unsqueeze(grid, 0)  # Add a batch dimension
-        grid = grid.type(torch.FloatTensor)  # Convert to float for compatibility
-
-        # Register the grid as a buffer (non-trainable parameter)
-        self.register_buffer('grid', grid)
-
     def forward(self, src, flow):
-        """
-        Perform the forward pass by applying the flow to the source image.
-
-        Args:
-            src (torch.Tensor): The input image (or volume) to be warped, with shape (B, C, D, H, W).
-            flow (torch.Tensor): The displacement field (flow) to apply, with shape (B, D, H, W, N),
-                                  where N is the number of spatial dimensions (2 or 3).
-
-        Returns:
-            torch.Tensor: The warped image (or volume) after applying the displacement field, 
-                          with the same shape as the input image (B, C, D, H, W).
-        """
-        # Compute new voxel locations by adding the flow field to the grid
-        shape = flow.shape[2:]  # Spatial dimensions
+        # Get spatial dimensions and number of dimensions
+        shape = flow.shape[2:]  # e.g., (D, H, W) or (H, W)
         dim = len(shape)
         device = flow.device
         dtype = flow.dtype
 
-        # Create sampling grid dynamically
+        # Create normalized coordinate grid
         coords = torch.meshgrid([torch.arange(0, s, device=device, dtype=dtype) for s in shape], indexing='ij')
-        grid = torch.stack(coords)  # (N, D, H, W)
-        grid = grid.unsqueeze(0)  # (1, N, D, H, W) or (1, N, H, W)
-        grid = grid.expand(flow.shape[0], -1, *shape)  # (B, N, D, H, W)
+        grid = torch.stack(coords)  # Shape: (N, ...)
+        grid = grid.unsqueeze(0).expand(flow.shape[0], -1, *shape)  # Shape: (B, N, ...)
 
-        # Add flow to sampling grid
+        # Apply displacement field
         new_locs = grid + flow
 
-        # Normalize to [-1, 1] for grid_sample
+        # Normalize coordinates to [-1, 1] range
         for i in range(dim):
-            new_locs[:, i, ...] = 2.0 * (new_locs[:, i] / (shape[i] - 1)) - 1.0
+            new_locs[:, i] = 2.0 * (new_locs[:, i] / (shape[i] - 1)) - 1.0
 
+        # Rearrange dimensions to match grid_sample format
         if dim == 2:
-            new_locs = new_locs.permute(0, 2, 3, 1)  # (B, H, W, 2)
-            new_locs = new_locs[..., [1, 0]]         # swap to (x, y)
+            new_locs = new_locs.permute(0, 2, 3, 1)      # (B, H, W, 2)
+            new_locs = new_locs[..., [1, 0]]             # Convert to (x, y)
         elif dim == 3:
-            new_locs = new_locs.permute(0, 2, 3, 4, 1)  # (B, D, H, W, 3)
-            new_locs = new_locs[..., [2, 1, 0]]         # swap to (x, y, z)
+            new_locs = new_locs.permute(0, 2, 3, 4, 1)   # (B, D, H, W, 3)
+            new_locs = new_locs[..., [2, 1, 0]]          # Convert to (x, y, z)
 
+        # Warp the source image using the flow field
         return F.grid_sample(src, new_locs, mode=self.mode, align_corners=True)
     
 
