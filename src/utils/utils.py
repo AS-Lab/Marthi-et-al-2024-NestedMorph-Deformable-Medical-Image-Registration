@@ -70,61 +70,62 @@ def pad_image(img, target_size):
 
 class SpatialTransformer(nn.Module):
     """
-    N-D Spatial Transformer Module.
+    N-Dimensional Spatial Transformer for warping images or volumes using a displacement field.
 
-    This module performs spatial transformations such as warping or shifting an image or a tensor
-    based on a flow field. The flow field indicates how each pixel or voxel should be displaced.
-    It can be used for tasks such as image registration, alignment, or geometric transformations.
+    This module performs spatial transformation by applying a flow (displacement field) to an input
+    image or volume. It dynamically constructs a sampling grid, adds the flow to compute new coordinates,
+    normalizes them, and uses `grid_sample` for interpolation.
 
     Args:
-        size (tuple): The shape of the input tensor (height, width, depth).
-        mode (str): The interpolation mode to use ('bilinear' or 'nearest').
+        mode (str): Interpolation mode to be used in grid sampling.
+                    Options: 'bilinear', 'nearest', or 'bicubic' (for 4D inputs only).
+                    Default is 'bilinear'.
+
+    Forward Args:
+        src (torch.Tensor): The input tensor to be warped.
+                            Shape must be (B, C, H, W) for 2D or (B, C, D, H, W) for 3D.
+
+        flow (torch.Tensor): The displacement field indicating where to sample from `src`.
+                             Shape must be (B, 2, H, W) for 2D or (B, 3, D, H, W) for 3D.
+                             The last dimension size must match the spatial dimensions of `src`.
+
+    Returns:
+        torch.Tensor: The warped image or volume, same shape as `src`.
     """
 
-    def __init__(self, size, mode='bilinear'):
+    def __init__(self, mode='bilinear'):
         super().__init__()
-
-        self.mode = mode  # Set interpolation mode (bilinear or nearest)
-
-        # Create the sampling grid based on the provided size
-        vectors = [torch.arange(0, s) for s in size]
-        grids = torch.meshgrid(vectors)  # Create a meshgrid for N-D grid coordinates
-        grid = torch.stack(grids)  # Stack the grid coordinates into a tensor
-        grid = torch.unsqueeze(grid, 0)  # Add a batch dimension
-        grid = grid.type(torch.FloatTensor).cuda()  # Move the grid to the GPU
-
-        # Register the grid as a buffer to keep it in the model state without saving to state dict
-        self.register_buffer('grid', grid)
+        self.mode = mode
 
     def forward(self, src, flow):
-        """
-        Performs the spatial transformation on the input tensor.
+        # Get spatial dimensions and number of dimensions
+        shape = flow.shape[2:]  # e.g., (D, H, W) or (H, W)
+        dim = len(shape)
+        device = flow.device
+        dtype = flow.dtype
 
-        Args:
-            src (Tensor): The source tensor to transform.
-            flow (Tensor): The flow field tensor that defines the displacement of each point in the source.
+        # Create normalized coordinate grid
+        coords = torch.meshgrid([torch.arange(0, s, device=device, dtype=dtype) for s in shape], indexing='ij')
+        grid = torch.stack(coords)  # Shape: (N, ...)
+        grid = grid.unsqueeze(0).expand(flow.shape[0], -1, *shape)  # Shape: (B, N, ...)
 
-        Returns:
-            Tensor: The transformed tensor after applying the flow field.
-        """
-        # Compute the new locations by adding the flow to the original grid
-        new_locs = self.grid + flow
-        shape = flow.shape[2:]  # Get the spatial shape (height, width, depth)
+        # Apply displacement field
+        new_locs = grid + flow
 
-        # Normalize the grid values to [-1, 1] for the resampler
-        for i in range(len(shape)):
-            new_locs[:, i, ...] = 2 * (new_locs[:, i, ...] / (shape[i] - 1) - 0.5)
+        # Normalize coordinates to [-1, 1] range
+        for i in range(dim):
+            new_locs[:, i] = 2.0 * (new_locs[:, i] / (shape[i] - 1)) - 1.0
 
-        # Rearrange the new locations and change the order of coordinates for N-D data
-        if len(shape) == 2:
-            new_locs = new_locs.permute(0, 2, 3, 1)  # For 2D data, swap the last dimension
-            new_locs = new_locs[..., [1, 0]]  # Reverse the channel order for 2D
-        elif len(shape) == 3:
-            new_locs = new_locs.permute(0, 2, 3, 4, 1)  # For 3D data, swap the last dimension
-            new_locs = new_locs[..., [2, 1, 0]]  # Reverse the channel order for 3D
+        # Rearrange dimensions to match grid_sample format
+        if dim == 2:
+            new_locs = new_locs.permute(0, 2, 3, 1)      # (B, H, W, 2)
+            new_locs = new_locs[..., [1, 0]]             # Convert to (x, y)
+        elif dim == 3:
+            new_locs = new_locs.permute(0, 2, 3, 4, 1)   # (B, D, H, W, 3)
+            new_locs = new_locs[..., [2, 1, 0]]          # Convert to (x, y, z)
 
-        # Apply grid sampling to get the transformed image using the flow and interpolation mode
-        return F.grid_sample(src, new_locs, align_corners=True, mode=self.mode)
+        # Warp the source image using the flow field
+        return F.grid_sample(src, new_locs, mode=self.mode, align_corners=True)
 
 
 class register_model(nn.Module):
