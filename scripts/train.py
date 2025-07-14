@@ -66,7 +66,7 @@ def count_parameters(model):
     """
     return sum(p.numel() for p in model.parameters()) / 1e6  # Number of parameters in millions
 
-def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, cont_training):
+def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, cont_training, device):
     """
     Train the model for image registration.
     
@@ -125,7 +125,7 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
     else:
         raise ValueError(f"Unknown model label: {model_label}")  # Raise error for unknown model
 
-    model.cuda()  # Move the model to GPU
+    model.to(device)  # Move the model to GPU
     num_params = count_parameters(model)  # Count the number of parameters in the model
     print(f"Number of parameters in the model: {num_params} million parameters")  # Print the number of parameters
 
@@ -133,7 +133,7 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
     Initialize spatial transformation function
     '''
     reg_model = register_model(img_size, 'nearest')  # Initialize the registration model
-    reg_model.cuda()  # Move the registration model to GPU
+    reg_model.to(device)  # Move the registration model to GPU
 
     '''
     If continuing training, load the best model checkpoint
@@ -209,7 +209,7 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
             idx += 1
             model.train()  # Set the model to training mode
             adjust_learning_rate(optimizer, epoch, epochs, lr)  # Adjust learning rate
-            data = [t.cuda() for t in data]  # Move data to GPU
+            data = [t.to(device) for t in data]  # Move data to GPU
             x, y = data[0], data[1]  # Unpack moving and fixed images
             x_in = torch.cat((x, y), dim=1)  # Concatenate moving and fixed images
             output = model((x, y))  # Forward pass through the model
@@ -240,11 +240,11 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
         with torch.no_grad():  # Disable gradient computation
             for data in val_loader:
                 model.eval()  # Set the model to evaluation mode
-                data = [t.cuda() for t in data]  # Move data to GPU
+                data = [t.to(device) for t in data]  # Move data to GPU
                 x, y = data[0], data[1]  # Unpack moving and fixed images
                 x_in = torch.cat((x, y), dim=1)  # Concatenate moving and fixed images
                 output = model((x, y))  # Forward pass through the model
-                def_out = reg_model(x.cuda().float(), output[1].cuda())  # Apply the flow field to the moving image
+                def_out = reg_model(x.to(device).float(), output[1].to(device))  # Apply the flow field to the moving image
 
                 # Compute Dice scores
                 dsc_new_y = similarity(def_out, y, multichannel=True)  # Dice score for y
