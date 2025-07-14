@@ -72,8 +72,6 @@ class MixFFN(nn.Module):
         out = self.fc2(ax)
         return out
 
-
-
 class MixFFN_skip(nn.Module):
     def __init__(self, c1, c2):
         super().__init__()
@@ -309,95 +307,6 @@ class SpatialAttention(nn.Module):
         x = self.spatial_gating_unit(x)
         x = self.proj_2(x)
         return x + shortcut  # Skip connection
-
-
-class Cross_Attention(nn.Module):
-    """
-    Implements cross-attention between two tensors.
-
-    Args:
-        key_channels (int): Number of channels for keys.
-        value_channels (int): Number of channels for values.
-        depth, height, width (int): Spatial dimensions of the input.
-        head_count (int, optional): Number of attention heads (default is 1).
-    """
-    def __init__(self, key_channels, value_channels, depth, height, width, head_count=1):
-        super().__init__()
-        self.key_channels = key_channels
-        self.head_count = head_count
-        self.value_channels = value_channels
-        self.depth = depth
-        self.height = height
-        self.width = width
-
-        self.reprojection = nn.Conv3d(value_channels, 2 * value_channels, 1)  # Reprojection after attention
-        self.norm = nn.LayerNorm(2 * value_channels)  # Normalization after attention
-
-    def forward(self, x1, x2):
-        """Forward pass for cross-attention."""
-        B, N, D = x1.size()  # Batch size, number of tokens, embedding dim
-        keys = x2.transpose(1, 2)  # Transpose to fit attention
-        queries = x2.transpose(1, 2)  # Queries come from the second input
-        values = x1.transpose(1, 2)  # Values come from the first input
-
-        head_key_channels = self.key_channels // self.head_count
-        head_value_channels = self.value_channels // self.head_count
-
-        attended_values = []
-        for i in range(self.head_count):
-            # Compute attention for each head
-            key = F.softmax(keys[:, i * head_key_channels : (i + 1) * head_key_channels, :], dim=2)
-            query = F.softmax(queries[:, i * head_key_channels : (i + 1) * head_key_channels, :], dim=1)
-            value = values[:, i * head_value_channels : (i + 1) * head_value_channels, :]
-            context = key @ value.transpose(1, 2)  # Attention context computation
-            attended_value = context.transpose(1, 2) @ query  # Compute attended values
-            attended_values.append(attended_value)
-
-        aggregated_values = torch.cat(attended_values, dim=1).reshape(B, D, self.depth, self.height, self.width)
-        reprojected_value = self.reprojection(aggregated_values).reshape(B, 2 * D, N).permute(0, 2, 1)
-        reprojected_value = self.norm(reprojected_value)
-        return reprojected_value
-
-
-class CrossAttentionBlock(nn.Module):
-    """
-    Cross-attention block combining two inputs with attention and MLP.
-
-    Args:
-        in_dim (int): The input dimension.
-        key_dim (int): The key dimension for attention.
-        value_dim (int): The value dimension for attention.
-        depth, height, width (int): Spatial dimensions of the input.
-        head_count (int, optional): Number of attention heads (default is 1).
-        token_mlp (str, optional): Type of MLP used ("mix", "mix_skip", or "standard").
-    """
-    def __init__(self, in_dim, key_dim, value_dim, depth, height, width, head_count=1, token_mlp="mix"):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(in_dim)  # Normalize input
-        self.D = depth
-        self.H = height
-        self.W = width
-        self.attn = Cross_Attention(key_dim, value_dim, depth, height, width, head_count=head_count)  # Cross-attention layer
-        self.norm2 = nn.LayerNorm((in_dim * 2))  # Normalize after concatenation
-
-        # Choose MLP type based on `token_mlp`
-        if token_mlp == "mix":
-            self.mlp = MixFFN((in_dim * 2), int(in_dim * 4))
-        elif token_mlp == "mix_skip":
-            self.mlp = MixFFN_skip((in_dim * 2), int(in_dim * 4))
-        else:
-            self.mlp = MLP_FFN((in_dim * 2), int(in_dim * 4))
-
-    def forward(self, x1, x2):
-        """Forward pass through the cross-attention block."""
-        norm_1 = self.norm1(x1)
-        norm_2 = self.norm1(x2)
-
-        attn = self.attn(norm_1, norm_2)  # Apply cross-attention
-        residual = torch.cat([x1, x2], dim=2)  # Concatenate inputs
-        tx = residual + attn  # Add attention result to input
-        mx = tx + self.mlp(self.norm2(tx), self.D, self.H, self.W)  # Apply MLP and residual connection
-        return mx
         
 
 class EfficientAttention(nn.Module):
@@ -456,51 +365,39 @@ class EfficientAttention(nn.Module):
 
 class ChannelAttention(nn.Module):
     """
-    Channel-wise attention mechanism using a linear projection and multi-head attention.
-
+    Lightweight Channel Attention using global context (SE-style).
     Args:
-        dim (int): The input dimension (C).
-        num_heads (int, optional): The number of attention heads (default is 8).
-        qkv_bias (bool, optional): Whether to use bias in the qkv projection (default is False).
-        attn_drop (float, optional): Dropout rate for attention weights (default is 0).
-        proj_drop (float, optional): Dropout rate for the output projection (default is 0).
+        dim (int): Number of input channels.
+        reduction (int): Reduction ratio for hidden layer size.
     """
-
-    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0, proj_drop=0):
-        super().__init__()
-        self.num_heads = num_heads
-        self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))  # Scaled temperature for attention
-
-        # Linear projections for QKV
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)  # Output projection
-        self.proj_drop = nn.Dropout(proj_drop)
+    def __init__(self, dim, reduction=16):
+        super(ChannelAttention, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool1d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(dim, dim // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(dim // reduction, dim, bias=False),
+            nn.Sigmoid()
+        )
 
     def forward(self, x):
-        """Forward pass for channel attention."""
-        B, N, C = x.shape
+        """
+        Args:
+            x: Tensor of shape (B, N, C)
+        Returns:
+            Tensor of shape (B, N, C) with channel-wise scaling
+        """
+        # Compute average over tokens N → squeeze to shape (B, C, 1)
+        x_perm = x.permute(0, 2, 1)  # (B, C, N)
+        y = self.avg_pool(x_perm)    # (B, C, 1)
+        y = y.view(x.size(0), -1)    # (B, C)
 
-        # Project input to QKV
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        # Fully connected attention weights
+        y = self.fc(y).unsqueeze(1)  # (B, 1, C)
 
-        # Normalize queries and keys
-        q = F.normalize(q, dim=-1)
-        k = F.normalize(k, dim=-1)
+        # Apply channel-wise attention
+        return x * y  # (B, N, C)
 
-        # Compute attention weights
-        attn = (q @ k.transpose(-2, -1)) * self.temperature
-        attn = attn.softmax(dim=-1)  # Softmax over keys
-        attn = self.attn_drop(attn)
-
-        # Compute output based on attention weights and values
-        x = (attn @ v).permute(0, 3, 1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-
-        return x
 
 class OverlapPatchEmbeddings(nn.Module):
     """
@@ -969,9 +866,9 @@ class MiT(nn.Module):
 
     def __init__(self, in_dim, key_dim, value_dim, layers, head_count=1, token_mlp="mix_skip"):
         super().__init__()
-        patch_sizes = [7, 3, 3, 3]
-        strides = [4, 2, 2, 2]
-        padding_sizes = [3, 1, 1, 1]
+        patch_sizes = [7, 3, 3, 3, 3]
+        strides = [4, 2, 2, 2, 2]
+        padding_sizes = [3, 1, 1, 1, 1]
 
         # Patch embeddings for each stage
         self.patch_embed1 = OverlapPatchEmbeddings(patch_sizes[0], strides[0], padding_sizes[0], 2, in_dim[0])
@@ -1037,19 +934,20 @@ class MultiScaleLight(nn.Module):
     """
     def __init__(self, num_classes=3, head_count=1, reduction_ratio=2, token_mlp_mode="mix_skip"):
         super().__init__()
-        dims = [48, 96, 192, 384]
-        key_dim = [48, 96, 192, 384]
-        value_dim = [48, 96, 192, 384]
+         # Reduced dimensions
+        dims = [32, 64, 128, 256]
+        key_dim = [32, 64, 128, 256]
+        value_dim = [32, 64, 128, 256]
         layers = [1, 1, 1, 1]
 
         # Initialize MiT backbone with heavily reduced dimensions
         self.backbone = MiT(in_dim=dims, key_dim=key_dim, value_dim=value_dim, layers=layers, head_count=head_count, token_mlp=token_mlp_mode)
 
         in_out_chan = [
-            [48, 48, 48, 48, 48],
-            [96, 96, 96, 96, 96],
-            [192, 192, 192, 192, 192],
-            [384, 384, 384, 384, 384]
+            [32, 32, 32, 32, 32],
+            [64, 64, 64, 64, 64],
+            [128, 128, 128, 128, 128],
+            [256, 256, 256, 256, 256]
         ]
 
         self.decoder_3 = MyDecoderLayerDAEFormer(in_out_chan[3], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
@@ -1093,6 +991,7 @@ class MultiScaleLight(nn.Module):
 
         return tmp_0
 
+    
     
 class SpatialTransformer(nn.Module):
     """
@@ -1152,38 +1051,23 @@ class SpatialTransformer(nn.Module):
 
         # Warp the source image using the flow field
         return F.grid_sample(src, new_locs, mode=self.mode, align_corners=True)
-    
+
 
 class NestedMorph(nn.Module):
-    """
-    A model that performs image registration by using a modified U-Net (Msa2Net) for feature extraction,
-    followed by a convolutional layer to generate a flow field and a spatial transformer to warp the image 
-    based on the flow.
-
-    Args:
-        inshape (tuple): Shape of the input image (1D, 2D, or 3D).
-        use_gpu (bool, optional): If True, moves the model to GPU. Default is False.
-
-    Forward pass:
-        Extracts features with U-Net, generates a flow field, and applies the flow field to warp the input image.
-
-    Outputs:
-        registered_image (tensor): The warped image after applying the flow field.
-        flow_field (tensor): The generated flow field.
-    """
     def __init__(self, inshape, use_gpu=False):
         super().__init__()
-        self.unet = MultiScaleLight(num_classes=3)
+        self.unet = MultiScaleLight(num_classes=1)  # Reduced output channels
         ndims = len(inshape)
         assert ndims in [1, 2, 3], f'ndims should be 1, 2, or 3. found: {ndims}'
-        self.flow = nn.Conv3d(3, ndims, kernel_size=3, padding=1)
+
+        self.flow = nn.Conv3d(1, ndims, kernel_size=3, padding=1)  # Adjusted input channels to match UNet output
         self.flow.weight = nn.Parameter(Normal(0, 1e-5).sample(self.flow.weight.shape))
         self.flow.bias = nn.Parameter(torch.zeros(self.flow.bias.shape))
+
         self.spatial_transform = SpatialTransformer()
+
         if use_gpu:
-            self.unet = self.unet.cuda()
-            self.flow = self.flow.cuda()
-            self.spatial_transform = self.spatial_transform.cuda()
+            self.cuda()
 
     def forward(self, inputs):
         source, tar = inputs
@@ -1191,7 +1075,8 @@ class NestedMorph(nn.Module):
         unet_output = self.unet(x)
         flow_field = self.flow(unet_output)
         registered_image = self.spatial_transform(source, flow_field)
-        return registered_image, flow_field    
+        return registered_image, flow_field
+    
 '''
 MSA-2Net
 
