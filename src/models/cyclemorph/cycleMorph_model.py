@@ -21,7 +21,7 @@ from .loss import crossCorrelation3D, gradientLoss, NCC_vxm, Grad3d_vxm
 import torch.nn as nn
 from . import configs as configs
 import matplotlib.pyplot as plt
-#from ptflops import get_model_complexity_info
+from src.utils.config import device
 
 class cycleMorph(BaseModel):
     def name(self):
@@ -94,7 +94,7 @@ class cycleMorph(BaseModel):
         with torch.no_grad():
             real_A = Variable(self.input_A)
             real_B = Variable(self.input_B)
-            _, flow_A = self.netG_A(torch.cat((real_A, real_B), dim=1).to(torch.device("cuda")))
+            _, flow_A = self.netG_A(torch.cat((real_A, real_B), dim=1).to(device))
         self.flow_A = flow_A 
 
     #def get_image_paths(self):
