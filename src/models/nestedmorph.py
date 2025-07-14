@@ -930,24 +930,30 @@ class MiT(nn.Module):
     
 class MultiScaleLight(nn.Module):
     """
-    Heavily reduced Msa2Net with much smaller dimensions while keeping 4 stages
+    Balanced Msa2Net with moderate dimensions and 4-stage structure
     """
-    def __init__(self, num_classes=3, head_count=1, reduction_ratio=2, token_mlp_mode="mix_skip"):
+    def __init__(self, num_classes=3, head_count=2, reduction_ratio=2, token_mlp_mode="mix_skip"):
         super().__init__()
-         # Reduced dimensions
-        dims = [32, 64, 128, 256]
-        key_dim = [32, 64, 128, 256]
-        value_dim = [32, 64, 128, 256]
+        # Moderately scaled dimensions
+        dims = [48, 96, 192, 384]
+        key_dim = [48, 96, 192, 384]
+        value_dim = [48, 96, 192, 384]
         layers = [1, 1, 1, 1]
 
-        # Initialize MiT backbone with heavily reduced dimensions
-        self.backbone = MiT(in_dim=dims, key_dim=key_dim, value_dim=value_dim, layers=layers, head_count=head_count, token_mlp=token_mlp_mode)
+        self.backbone = MiT(
+            in_dim=dims,
+            key_dim=key_dim,
+            value_dim=value_dim,
+            layers=layers,
+            head_count=head_count,
+            token_mlp=token_mlp_mode
+        )
 
         in_out_chan = [
-            [32, 32, 32, 32, 32],
-            [64, 64, 64, 64, 64],
-            [128, 128, 128, 128, 128],
-            [256, 256, 256, 256, 256]
+            [48, 48, 48, 48, 48],
+            [96, 96, 96, 96, 96],
+            [192, 192, 192, 192, 192],
+            [384, 384, 384, 384, 384]
         ]
 
         self.decoder_3 = MyDecoderLayerDAEFormer(in_out_chan[3], head_count, token_mlp_mode, reduction_ratio, n_class=num_classes)
@@ -957,7 +963,7 @@ class MultiScaleLight(nn.Module):
 
     def forward(self, x):
         """
-        Forward pass for heavily reduced Msa2Net - maintaining 4-stage structure
+        Forward pass for balanced Msa2Net with 4 stages
         """
         # Handle single-channel input
         if x.size()[1] == 1:
@@ -966,13 +972,11 @@ class MultiScaleLight(nn.Module):
         output_enc = self.backbone(x)
         b, c, d, h, w = output_enc[3].shape
 
-        # Pass the resolution of output_enc[3] to decoder_3
         tmp_3 = self.decoder_3(
             output_enc[3].permute(0, 2, 3, 4, 1).view(b, -1, c),
-            input_resolution=(output_enc[3].shape[2], output_enc[3].shape[3], output_enc[3].shape[4])
+            input_resolution=(d, h, w)
         )
-        
-        # Subsequent decoders use the skip connection and resolution from the encoder outputs
+
         tmp_2 = self.decoder_2(
             tmp_3,
             output_enc[2],
