@@ -1,5 +1,6 @@
 import argparse
 import torch
+from src.utils.config import device
 from scripts.train import train_model  # Import the train_model function from train.py
 from scripts.train_cyclemorph import train_model as train_cyclemorph  # Import the train_model function from train_cyclemorph.py
 
@@ -27,20 +28,7 @@ def parse_args():
     return parser.parse_args()
 
 if __name__ == '__main__':
-    '''
-    GPU configuration
-    '''
-    GPU_iden = 0
-    GPU_num = torch.cuda.device_count()
-    print('Number of GPU:', GPU_num)
-    for GPU_idx in range(GPU_num):
-        GPU_name = torch.cuda.get_device_name(GPU_idx)
-        print('     GPU #' + str(GPU_idx) + ': ' + GPU_name)
-    torch.cuda.set_device(GPU_iden)
-    GPU_avai = torch.cuda.is_available()
-    print('Currently using:', torch.cuda.get_device_name(GPU_iden))
-    print('If the GPU is available?', GPU_avai)
-
+    
     # Parse command-line arguments
     args = parse_args()
     
@@ -51,7 +39,7 @@ if __name__ == '__main__':
         train_function = train_model
 
     # Call the selected train_model function with individual arguments
-    train_function(
+        train_function(
         t1_dir=args.t1_dir,
         dwi_dir=args.dwi_dir,
         model_label=args.model_label,
@@ -59,7 +47,8 @@ if __name__ == '__main__':
         img_size=args.img_size,
         lr=args.lr,
         batch_size=args.batch_size,
-        cont_training=args.cont_training
+        cont_training=args.cont_training,
+        device=device  # Pass it here
     )
 
 # python main.py --t1_dir /path/to/t1 --dwi_dir /path/to/dwi --epochs 100 --img_size 64,64,64 --lr 2e-4 --batch_size 2 --cont_training --model_label NestedMorph
