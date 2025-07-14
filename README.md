@@ -17,9 +17,9 @@ The NestedMorph framework combines advanced deep learning techniques for deforma
 | VoxelMorph           | CNN            | 0.27                  |
 | ViT-V-Net            | Transformer    | 31.33                 |
 | TransMorph           | Transformer    | 46.75                 |
-| **Proposed NestedMorph**      | **Transformer**    | **24.15**                |
+| **Proposed NestedMorph**      | **Transformer**    | **21.95**                |
 
-⭐ The proposed **NestedMorph** is at least **48% less in size** than the current state-of-the-art Transformer models.
+⭐ The proposed **NestedMorph** is at least **53% less in size** than the current state-of-the-art Transformer models.
 
 ## Key Features  
 - **3D Deformable Image Registration:** Designed for volumetric medical images to capture complex anatomical variations.  
