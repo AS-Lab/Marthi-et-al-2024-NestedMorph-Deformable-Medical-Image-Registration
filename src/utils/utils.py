@@ -5,10 +5,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import nn
-# import pystrum.pynd.ndutils as nd
 from skimage.metrics import structural_similarity as ssim
 from scipy.ndimage import gaussian_filter
-import re
+from src.utils.config import device
 
 class AverageMeter(object):
     """
@@ -91,7 +90,7 @@ class SpatialTransformer(nn.Module):
         grids = torch.meshgrid(vectors)  # Create a meshgrid for N-D grid coordinates
         grid = torch.stack(grids)  # Stack the grid coordinates into a tensor
         grid = torch.unsqueeze(grid, 0)  # Add a batch dimension
-        grid = grid.type(torch.FloatTensor).cuda()  # Move the grid to the GPU
+        grid = grid.type(torch.FloatTensor).to(device)  # Move the grid to the GPU
 
         # Register the grid as a buffer to keep it in the model state without saving to state dict
         self.register_buffer('grid', grid)
@@ -155,8 +154,8 @@ class register_model(nn.Module):
         Returns:
             Tensor: The transformed image after applying the flow.
         """
-        img = x.cuda()  # Move the input image to GPU
-        flow = y.cuda()  # Move the flow field to GPU
+        img = x.to(device)  # Move the input image to GPU
+        flow = y.to(device)  # Move the flow field to GPU
         out = self.spatial_trans(img, flow)  # Apply spatial transformation
         return out  # Return the transformed image
 
