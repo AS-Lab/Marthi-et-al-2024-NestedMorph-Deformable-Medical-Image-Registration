@@ -68,7 +68,7 @@ def count_parameters(model):
     """
     return sum(p.numel() for p in model.parameters()) / 1e6  # Number of parameters in millions
 
-def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, cont_training):
+def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, cont_training, device):
     """
     Train the CycleMorph model for image registration.
     
@@ -97,7 +97,7 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
     Initialize spatial transformation function
     '''
     reg_model = register_model(img_size, 'nearest')  # Initialize registration model
-    reg_model.cuda()  # Move registration model to GPU
+    reg_model.to(device)  # Move registration model to GPU
 
     # Initialize CycleMorph model
     opt = CONFIGS['Cycle-Morph-v0']  # Load configuration for CycleMorph
@@ -173,7 +173,7 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
         idx = 0  # Batch index
         for data in train_loader:
             idx += 1
-            data = [t.cuda() for t in data]  # Move data to GPU
+            data = [t.to(device) for t in data]  # Move data to GPU
             x = data[0]  # Moving image (T1)
             y = data[1]  # Fixed image (DWI)
             model.set_input(x, y)  # Set input data for the model
@@ -190,14 +190,14 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
         eval_dsc_new_x = AverageMeter()  # Track Dice score for x
         with torch.no_grad():
             for data in val_loader:
-                data = [t.cuda() for t in data]  # Move data to GPU
+                data = [t.to(device) for t in data]  # Move data to GPU
                 x = data[0]  # Moving image (T1)
                 y = data[1]  # Fixed image (DWI)
                 model.set_input(x, y)  # Set input data for the model
                 model.test()  # Run the model in test mode
                 visuals = model.get_test_data()  # Get the output visuals
                 flow = visuals['flow_A']  # Get the flow field
-                def_out = reg_model(x.cuda().float(), flow.cuda())  # Apply the flow field to the moving image
+                def_out = reg_model(x.to(device).float(), flow.to(device))  # Apply the flow field to the moving image
                 dsc_new_y = similarity(def_out, y, multichannel=True)  # Compute Dice score for y
                 dsc_new_x = similarity(def_out, x, multichannel=True)  # Compute Dice score for x
                 eval_dsc_new_y.update(dsc_new_y, x.size(0))  # Update average Dice score for y
