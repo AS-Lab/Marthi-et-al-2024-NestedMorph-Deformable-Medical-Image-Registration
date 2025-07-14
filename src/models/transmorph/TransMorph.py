@@ -21,6 +21,7 @@ from torch.distributions.normal import Normal
 import torch.nn.functional as nnf
 import numpy as np
 import src.models.transmorph.configs_TransMorph as configs
+from src.utils.config import device
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -460,8 +461,8 @@ class SinusoidalPositionEmbedding(nn.Module):
 
     def forward(self, x):
         batch_sz, n_patches, hidden = x.shape
-        position_ids = torch.arange(0, n_patches).float().cuda()
-        indices = torch.arange(0, hidden//2).float().cuda()
+        position_ids = torch.arange(0, n_patches).float().to(device)
+        indices = torch.arange(0, hidden//2).float().to(device)
         indices = torch.pow(10000.0, -2 * indices / hidden)
         embeddings = torch.einsum('b,d->bd', position_ids, indices)
         embeddings = torch.stack([torch.sin(embeddings), torch.cos(embeddings)], dim=-1)
@@ -578,8 +579,7 @@ class SwinTransformer(nn.Module):
                 torch.zeros(1, embed_dim, patches_resolution[0], patches_resolution[1], patches_resolution[2]))
             trunc_normal_(self.absolute_pos_embed, std=.02)
         elif self.spe:
-            self.pos_embd = SinPositionalEncoding3D(embed_dim).cuda()
-            #self.pos_embd = SinusoidalPositionEmbedding().cuda()
+            self.pos_embd = SinPositionalEncoding3D(embed_dim).to(device)
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         # stochastic depth
