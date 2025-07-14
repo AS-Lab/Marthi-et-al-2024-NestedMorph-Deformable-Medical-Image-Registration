@@ -6,6 +6,7 @@ import numpy as np
 from math import exp
 import math
 import torch.nn as nn
+from src.utils.config import device
 
 class Grad3d(torch.nn.Module):
     """
@@ -99,7 +100,7 @@ class NCC_vxm(torch.nn.Module):
         win = [9] * ndims if self.win is None else self.win
 
         # Define filter for convolution
-        sum_filt = torch.ones([1, 1, *win]).to("cuda")
+        sum_filt = torch.ones([1, 1, *win]).to(device)
 
         pad_no = math.floor(win[0] / 2)
 
