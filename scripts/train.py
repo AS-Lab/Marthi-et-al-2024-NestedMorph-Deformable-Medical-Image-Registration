@@ -145,6 +145,7 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
         best_model = torch.load(model_dir + natsorted(os.listdir(model_dir))[-3])['state_dict']  # Load the best model checkpoint
         model.load_state_dict(best_model)  # Load the state into the model
     else:
+        model_dir = 'experiments/' + save_dir  # Directory containing saved models
         updated_lr = lr  # Use the initial learning rate
 
     '''
@@ -274,7 +275,7 @@ def train_model(t1_dir, dwi_dir, model_label, epochs, img_size, lr, batch_size, 
         
         # Save the last def_out and y images from the 32nd slice for every 10th epoch
         if (epoch) % 10 == 0 and last_def_out is not None and last_y is not None:
-            save_images(last_def_out, last_y, last_x, epoch)
+            save_images(last_def_out, last_y, last_x, epoch, model_dir)
         
         # Reset meters
         loss_all.reset()
