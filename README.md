@@ -144,6 +144,6 @@ For questions or collaborations:
   
 **🌟 Star us on GitHub — it helps!**
 
-[⬆ Back to Top](#NestedMorph:-Deformable-Medical-Image-Registration)
+[⬆ Back to Top](#nestedmorph-deformable-medical-image-registration)
 
 </div>
