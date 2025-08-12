@@ -56,7 +56,7 @@ The model outputs:
 ![NestedMorph Architecture](Figures/NestedMorph.png)
 
 ## 🤖 Models  
-This repository contains several models under the `Models/` directory. Each model can be used for deformable medical image registration. Below are the available models:
+This repository contains several models under the `models/` directory. Each model can be used for deformable medical image registration. Below are the available models:
 
 - [CycleMorph](src/models/cyclemorph/cycleMorph_model.py) - A model for cycle-consistent registration.
 - [MIDIR](src/models/midir/midir.py) - Multi-scale Image Deformable Registration.
