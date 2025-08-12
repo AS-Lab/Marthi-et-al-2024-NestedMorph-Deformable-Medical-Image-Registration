@@ -24,13 +24,15 @@ The NestedMorph framework combines advanced deep learning techniques for deforma
 ⭐ The proposed **NestedMorph** is at least **53% less in size** than the current state-of-the-art Transformer models.
 
 ## Key Features  
-- **3D Deformable Image Registration:** Designed for volumetric medical images to capture complex anatomical variations.  
-- **Attention-Based Architecture:** Utilizes multi-scale attention mechanisms to enhance feature extraction and alignment.  
-- **Nested Attention Modules:** Employs nested attention modules that integrate attention weights from both encoder and decoder, reducing computational complexity while maintaining effective spatial transformations.  
-- **Flexible Training:** Supports various loss functions (similarity metrics, regularization losses) and datasets.  
-- **Optimized Input Size:** The proposed model is optimized for any 3D input size, ensuring efficient training and inference.
+- 🧠 **3D Deformable Image Registration**: Designed for volumetric medical images to capture complex anatomical variations.  
+- 👁️ **Attention-Based Architecture**: Utilizes multi-scale attention mechanisms to enhance feature extraction and alignment.  
+- 🔄 **Nested Attention Modules**: Employs nested attention modules that integrate attention weights from both encoder and decoder, reducing computational complexity while maintaining effective spatial transformations.  
+- ⚙️ **Flexible Training**: Supports various loss functions (similarity metrics, regularization losses) and datasets.  
+- 📏 **Optimized Input Size**: The proposed model is optimized for any 3D input size, ensuring efficient training and inference.  
 
-## Overall Framework  
+## 🏗️ Architecture
+
+### Overall Framework
 
 The **Overall Framework** for NestedMorph combines multiple modules that work in synergy for medical image registration. The framework consists of the following key components:
 - **Image Preprocessing:** Includes normalization, resizing, and augmentation of medical images.
@@ -39,7 +41,7 @@ The **Overall Framework** for NestedMorph combines multiple modules that work in
 
 ![Overall Framework](Figures/OverallFramework.png)
 
-## Model Architecture  
+### Detailed Architecture Flow  
 NestedMorph comprises:  
 1. **Feature Extractor (Multi-Scale Encoder):** Extracts multi-scale features from input image pairs.
 2. **Nested Attention Module:** Captures both local and global dependencies for enhanced feature aggregation.
@@ -53,7 +55,7 @@ The model outputs:
 
 ![NestedMorph Architecture](Figures/NestedMorph.png)
 
-## Models  
+## 🤖 Models  
 This repository contains several models under the `Models/` directory. Each model can be used for deformable medical image registration. Below are the available models:
 
 - [CycleMorph](src/models/cyclemorph/cycleMorph_model.py) - A model for cycle-consistent registration.
@@ -66,8 +68,6 @@ This repository contains several models under the `Models/` directory. Each mode
 ## Data Directory Structure  
 
 The `data/` directory is structured as follows to organize training and testing datasets for deformable medical image registration:
-
-### **Flowchart Diagram**
 
 ```
 Registration_Data/
@@ -88,7 +88,7 @@ Registration_Data/
 
 Each `subjectID_t1.pkl` file should match a corresponding `subjectID_dwi.pkl` file for proper pairing in the registration tasks.
 
-## Installation  
+## 🛠️ Installation  
 
 ### Prerequisites  
 - Python 3.8+  
@@ -113,17 +113,17 @@ To train the model, run the following command with the appropriate parameters:
    python main.py --t1_dir ./Registration_Data/T1_Moving/ --dwi_dir ./Registration_Data/Diffusion_Fixed/ --epochs 100 --img_size 64,64,64 --lr 2e-4 --batch_size 2 --cont_training --model_label NestedMorph  
    ```
 
-## Registration Results  
+## 📊 Registration Results
 
 This section presents the **Registration Results** achieved by the NestedMorph model on various datasets, including brain MRI and other medical image modalities. The results demonstrate the effectiveness of the NestedMorph model in performing deformable image registration, particularly in terms of accuracy and computational efficiency.
 
 ![Registration Results](Figures/Registration.png)
 
-## Citation  
+## 📚 Citation
 
-If you find this code useful in your research, please consider citing:
+If you use this work in your research, please cite:
 
-```
+```bibtex
 @inproceedings{kumar2025nestedmorph,
   title={NestedMorph: Enhancing Deformable Medical Image Registration with Nested Attention Mechanisms},
   author={Kumar, Gurucharan Marthi Krishna and Mendola, Janine and Shmuel, Amir},
@@ -131,3 +131,19 @@ If you find this code useful in your research, please consider citing:
   year={2025}
 }
 ```
+
+## 📞 Contact
+
+For questions or collaborations:
+- **Gurucharan Marthi Krishna Kumar**: [gurucharan.marthikrishnakumar@mail.mcgill.ca](mailto:gurucharan.marthikrishnakumar@mail.mcgill.ca)
+- **Project Issues**: [GitHub Issues](https://github.com/AS-Lab/Marthi-et-al-2024-NestedMorph-Deformable-Medical-Image-Registration/issues)
+
+---
+
+<div align="center">
+  
+**🌟 Star us on GitHub — it helps!**
+
+[⬆ Back to Top](#NestedMorph:-Deformable-Medical-Image-Registration)
+
+</div>
