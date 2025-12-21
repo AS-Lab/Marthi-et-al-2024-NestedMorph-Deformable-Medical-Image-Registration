@@ -2,6 +2,8 @@ import random
 import pickle
 import numpy as np
 import torch
+import nibabel as nib  # Added for NIfTI support
+import os
 
 # Define a large constant for seeding
 M = 2 ** 32 - 1  # Maximum value for a 32-bit unsigned integer
@@ -63,16 +65,34 @@ def sample(x, size):
 
 def pkload(fname):
     """
-    Load a Python object from a pickle file.
+    Load data from either a pickle file (.pkl) or NIfTI file (.nii.gz/.nii).
+    NOW SUPPORTS BOTH FORMATS!
     
     Args:
-        fname (str): The filename of the pickle file.
+        fname (str): The filename of the pickle or NIfTI file.
         
     Returns:
-        object: The Python object loaded from the pickle file.
+        np.ndarray or object: The data loaded from the file.
     """
-    with open(fname, 'rb') as f:
-        return pickle.load(f)  # Load and return the object from the pickle file
+    if fname.endswith('.pkl'):
+        # Original pickle loading
+        with open(fname, 'rb') as f:
+            return pickle.load(f)
+    
+    elif fname.endswith('.nii.gz') or fname.endswith('.nii'):
+        # NIfTI loading
+        nii_img = nib.load(fname)
+        data = nii_img.get_fdata()
+        
+        # Handle 4D volumes (take first volume)
+        if data.ndim == 4:
+            print(f"Warning: 4D volume in {os.path.basename(fname)}, using first volume")
+            data = data[..., 0]
+        
+        return data.astype(np.float32)
+    
+    else:
+        raise ValueError(f"Unsupported file format: {fname}. Use .pkl, .nii, or .nii.gz")
 
 # Define a constant shape for the coordinates
 _shape = (240, 240, 155)
