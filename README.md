@@ -65,28 +65,30 @@ This repository contains several models under the `models/` directory. Each mode
 - [VoxelMorph](src/models/voxelmorph.py) - A voxel-based deformable registration method.
 - [NestedMorph](src/models/nestedmorph.py) - Proposed Nested multi-scale deformable model.
 
-## Data Directory Structure  
+## 📂 Data Directory Structure
 
-The `data/` directory is structured as follows to organize training and testing datasets for deformable medical image registration:
+NestedMorph expects datasets in **NIfTI format (`.nii.gz`)**. To ensure proper training, organize your `data/` directory as follows:
 
-```
+```text
 Registration_Data/
-│
-├── T1_Moving/                  # Directory for source images (e.g., T1-weighted MRI scans)
-│   ├── subject1_t1.pkl         # Pickle files containing source images (e.g., T1 image for subject 1)
-│   ├── subject2_t1.pkl         # Pickle files containing source images (e.g., T1 image for subject 2)
+├── T1_Moving/                  # Source images (e.g., Structural T1 MRI)
+│   ├── HCA6002236_V1_MR_T1w_MPR_...nii.gz
+│   ├── HCA6010538_V1_MR_T1w_MPR_...nii.gz
 │   └── ...
-│
-├── Diffusion_Fixed/            # Directory for target images (e.g., DWI or atlas images)
-│   ├── subject1_dwi.pkl        # Pickle files containing target images (e.g., DWI image for subject 1)
-│   ├── subject2_dwi.pkl        # Pickle files containing target images (e.g., DWI image for subject 2)
-│   └── ...
+└── Diffusion_Fixed/             # Target images (e.g., DWI or dMRI)
+    ├── HCA6002236_V1_MR_dir99_...nii.gz
+    ├── HCA6010538_V1_MR_dir99_...nii.gz
+    └── ...
+
 ```
 
-- **T1_Moving/**: Contains the source images for registration. These could be T1-weighted MRI scans or any other type of image used as the "moving" image.
-- **Diffusion_Fixed/**: Contains the target images for registration. These could be Diffusion Weighted Imaging (DWI) scans or any other type of image used as the "fixed" image.
+### Automatic File Pairing
 
-Each `subjectID_t1.pkl` file should match a corresponding `subjectID_dwi.pkl` file for proper pairing in the registration tasks.
+The data loader automatically pairs images by extracting the **Subject ID** from the filename.
+
+* **T1 Moving:** `HCA6002236_V1_MR_T1w...` → ID: **HCA6002236**
+* **DWI Fixed:** `HCA6002236_V1_MR_dir99...` → ID: **HCA6002236**
+* *If IDs match, the pair is used for registration.*
 
 ## 🛠️ Installation  
 
