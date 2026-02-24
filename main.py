@@ -14,7 +14,7 @@ def parse_args():
     parser.add_argument('--t1_dir', type=str, required=True, help='Directory for T1 moving images')
     parser.add_argument('--dwi_dir', type=str, required=True, help='Directory for diffusion fixed images')
     parser.add_argument('--model_label', type=str, required=True, 
-                        help='Model label (MIDIR, NestedMorph, NestedMorph_Lite, TransMorph, ViTVNet, VoxelMorph, CycleMorph)')
+                        help='Model label (MIDIR, NestedMorph, TransMorph, ViTVNet, VoxelMorph, CycleMorph)')
     
     # Optional arguments with default values
     parser.add_argument('--epochs', type=int, default=500, help='Number of epochs')
@@ -22,7 +22,7 @@ def parse_args():
                         help='Image size (HxWxD) as a comma-separated string')
     parser.add_argument('--lr', type=float, default=0.0001, help='Learning rate')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size')
-    parser.add_argument('--cont_training', action='store_false', 
+    parser.add_argument('--cont_training', action='store_true', 
                         help='Continue training from a saved checkpoint')
     
     return parser.parse_args()
@@ -39,7 +39,7 @@ if __name__ == '__main__':
         train_function = train_model
 
     # Call the selected train_model function with individual arguments
-        train_function(
+    train_function(
         t1_dir=args.t1_dir,
         dwi_dir=args.dwi_dir,
         model_label=args.model_label,
