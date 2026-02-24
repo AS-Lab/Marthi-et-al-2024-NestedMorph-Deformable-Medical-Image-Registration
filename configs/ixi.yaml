@@ -1,0 +1,31 @@
+# ──────────────────────────────────────────────────────────
+# IXI Brain MRI Dataset Configuration
+# Atlas-to-Patient Registration (TransMorph-compatible)
+# ──────────────────────────────────────────────────────────
+
+dataset:
+  name: IXI
+  type: atlas_to_patient    # atlas-to-patient registration
+  data_dir: ./data/IXI      # Root directory (must contain Train/, Val/, Test/)
+  atlas_path: ./data/IXI/atlas.pkl  # Atlas file (.pkl or .nii.gz)
+  img_size: [160, 192, 224]         # Target volume dimensions (H, W, D)
+  format: pkl                       # Primary format: pkl or nii.gz
+  label_suffix: _seg                # Suffix for NIfTI segmentation files
+
+  # Dataset splits (TransMorph IXI defaults):
+  #   Train: 403 subjects
+  #   Val:    58 subjects
+  #   Test:  115 subjects
+
+training:
+  epochs: 500
+  batch_size: 1
+  learning_rate: 0.0001
+  loss_weights:
+    similarity: 1       # NCC loss weight
+    regularization: 1   # Gradient (diffusion) loss weight
+
+# Evaluation labels (FreeSurfer subcortical structures)
+# These are the standard 46 labels used in TransMorph IXI evaluation.
+# Set to null to auto-detect from segmentation files.
+eval_labels: null

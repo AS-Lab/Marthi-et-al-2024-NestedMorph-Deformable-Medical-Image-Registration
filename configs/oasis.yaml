@@ -1,0 +1,30 @@
+# ──────────────────────────────────────────────────────────
+# OASIS Brain MRI Dataset Configuration
+# Inter-Patient Registration (Learn2Reg Task 03)
+# ──────────────────────────────────────────────────────────
+
+dataset:
+  name: OASIS
+  type: inter_patient       # inter-patient registration (random pairs)
+  data_dir: ./data/OASIS    # Root directory (must contain Train/, Val/, Test/)
+  img_size: [160, 192, 224] # Target volume dimensions (H, W, D)
+  format: pkl               # Primary format: pkl or nii.gz
+  label_suffix: _seg
+
+  # Dataset splits (TransMorph OASIS defaults):
+  #   Train: 394 subjects (random pairs each epoch)
+  #   Val:    19 subjects (consecutive pairs)
+  #   Test:   38 subjects (consecutive pairs)
+
+training:
+  epochs: 500
+  batch_size: 1
+  learning_rate: 0.0001
+  loss_weights:
+    similarity: 1
+    regularization: 1
+
+# Evaluation labels (FreeSurfer subcortical structures)
+# OASIS uses 35 anatomical labels by default.
+# Set to null to auto-detect from segmentation files.
+eval_labels: null
