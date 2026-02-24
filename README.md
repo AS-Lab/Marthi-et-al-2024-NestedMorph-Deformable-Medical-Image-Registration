@@ -40,11 +40,11 @@ This repository implements the **NestedMorph** model, presented in the paper "[K
 
 ---
 
-The NestedMorph framework combines advanced deep learning techniques for deformable medical image registration, leveraging Vision Transformer (ViT) and nested attention mechanisms to improve the accuracy and efficiency of image alignment.
+## Overview
 
-## Model Comparison Table
+NestedMorph is a 3D deformable medical image registration framework that combines Vision Transformer (ViT) encoders with nested attention mechanisms to achieve accurate anatomical alignment at significantly reduced model size.
 
-| Model                | Architecture   | Parameters (Millions) |
+| Model                | Architecture   | Parameters (M) |
 |----------------------|----------------|-----------------------|
 | VoxelMorph           | CNN            | 0.27                  |
 | ViT-V-Net            | Transformer    | 31.33                 |
